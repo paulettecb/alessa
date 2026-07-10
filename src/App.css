@@ -257,3 +257,45 @@
 .table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* Table actions */
+.table-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.table-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+}
+
+.table-action-btn:hover {
+  background-color: var(--bg-sunken);
+  color: var(--text-primary);
+}
+
+.table-action-btn.delete {
+  color: var(--danger-600);
+}
+
+.table-action-btn.delete:hover {
+  background-color: rgba(162, 70, 50, 0.1);
+}
+
+/* Dialog actions */
+.dialog-actions {
+  display: flex;
+  gap: var(--spacing-lg);
+  justify-content: flex-end;
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-subtle);
+}
