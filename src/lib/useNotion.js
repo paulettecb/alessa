@@ -1,109 +1,55 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchDatabase, DATABASES } from './notionClient';
 
-export function useFlores() {
-  const [flores, setFlores] = useState([]);
+// Hook base: carga una base de Notion y expone recargar() para refrescar
+// los datos sin recargar toda la página.
+function useDatabase(databaseId) {
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.FLORES);
-        setFlores(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const recargar = useCallback(async () => {
+    try {
+      const res = await fetchDatabase(databaseId);
+      setData(res);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [databaseId]);
 
-  return { flores, loading, error };
+  useEffect(() => {
+    recargar();
+  }, [recargar]);
+
+  return { data, loading, error, recargar };
+}
+
+export function useFlores() {
+  const { data: flores, loading, error, recargar } = useDatabase(DATABASES.FLORES);
+  return { flores, loading, error, recargar };
 }
 
 export function useIngredientes() {
-  const [ingredientes, setIngredientes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.INGREDIENTES);
-        setIngredientes(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  return { ingredientes, loading, error };
+  const { data: ingredientes, loading, error, recargar } = useDatabase(DATABASES.INGREDIENTES);
+  return { ingredientes, loading, error, recargar };
 }
 
 export function useTamaños() {
-  const [tamaños, setTamaños] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.TAMAÑOS);
-        setTamaños(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  return { tamaños, loading, error };
+  const { data: tamaños, loading, error, recargar } = useDatabase(DATABASES.TAMAÑOS);
+  return { tamaños, loading, error, recargar };
 }
 
 export function useProductos() {
-  const [productos, setProductos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.PRODUCTOS);
-        setProductos(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  return { productos, loading, error };
+  const { data: productos, loading, error, recargar } = useDatabase(DATABASES.PRODUCTOS);
+  return { productos, loading, error, recargar };
 }
 
 export function useCompras() {
-  const [compras, setCompras] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.COMPRAS);
-        setCompras(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  return { compras, loading, error };
+  const { data: compras, loading, error, recargar } = useDatabase(DATABASES.COMPRAS);
+  return { compras, loading, error, recargar };
 }
 
 export function useRecetas() {
@@ -112,24 +58,27 @@ export function useRecetas() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [rf, ri] = await Promise.all([
-          fetchDatabase(DATABASES.RECETAS_FLORES),
-          fetchDatabase(DATABASES.RECETAS_INGREDIENTES),
-        ]);
-        setRecetasFlores(rf);
-        setRecetasIngredientes(ri);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const recargar = useCallback(async () => {
+    try {
+      const [rf, ri] = await Promise.all([
+        fetchDatabase(DATABASES.RECETAS_FLORES),
+        fetchDatabase(DATABASES.RECETAS_INGREDIENTES),
+      ]);
+      setRecetasFlores(rf);
+      setRecetasIngredientes(ri);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { recetasFlores, recetasIngredientes, loading, error };
+  useEffect(() => {
+    recargar();
+  }, [recargar]);
+
+  return { recetasFlores, recetasIngredientes, loading, error, recargar };
 }
 
 export function useAjustes() {
@@ -137,22 +86,25 @@ export function useAjustes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchDatabase(DATABASES.AJUSTES);
-        const ajustesObj = {};
-        data.forEach(item => {
-          ajustesObj[item.Parámetro] = item.Valor;
-        });
-        setAjustes(ajustesObj);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const recargar = useCallback(async () => {
+    try {
+      const data = await fetchDatabase(DATABASES.AJUSTES);
+      const ajustesObj = {};
+      data.forEach(item => {
+        ajustesObj[item.Parámetro] = item.Valor;
+      });
+      setAjustes(ajustesObj);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { ajustes, loading, error };
+  useEffect(() => {
+    recargar();
+  }, [recargar]);
+
+  return { ajustes, loading, error, recargar };
 }

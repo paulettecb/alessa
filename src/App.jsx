@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2, DollarSign, Printer, TrendingUp } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
@@ -6,7 +6,7 @@ import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { saludoDelDia } from './components/Greeting';
 import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
-import { createPage, updatePage, archivePage, notionFetch, DATABASES } from './lib/notionClient';
+import { createPage, updatePage, archivePage, notionFetch, fetchDatabase, DATABASES } from './lib/notionClient';
 import { calcularReceta, calcularMargen, formatoMoneda } from './lib/costos';
 import './App.css';
 
@@ -165,11 +165,12 @@ function PantallaInicio() {
 }
 
 function PantallaFlores() {
-  const { flores, loading } = useFlores();
+  const { flores, loading, error, recargar } = useFlores();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFlor, setEditingFlor] = useState(null);
   const [formData, setFormData] = useState({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const resetForm = useCallback(() => {
     setFormData({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
@@ -215,16 +216,35 @@ function PantallaFlores() {
       } else {
         await createPage(DATABASES.FLORES, props);
       }
+      await recargar();
       handleCloseDialog();
-      // Forzar recarga (idealmente usaríamos SWR o similar)
-      window.location.reload();
     } catch (error) {
       console.error('Error guardando flor:', error);
       alert('Error al guardar. Ver consola para detalles.');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingFlor, handleCloseDialog]);
+  }, [formData, editingFlor, handleCloseDialog, recargar]);
+
+  const handleDelete = useCallback(async (flor) => {
+    setDeletingId(flor.id);
+    try {
+      // Avisar si la flor está en recetas: esos items quedarían sin costo
+      const recetas = await fetchDatabase(DATABASES.RECETAS_FLORES);
+      const usos = recetas.filter(r => r.Flor?.[0] === flor.id).length;
+      const aviso = usos > 0
+        ? `\n\nOjo: se usa en ${usos} ${usos === 1 ? 'receta' : 'recetas'}; esos items quedarán sin costo.`
+        : '';
+      if (!window.confirm(`¿Borrar "${flor.Nombre}"? Se puede recuperar desde la papelera de Notion.${aviso}`)) return;
+      await archivePage(flor.id);
+      await recargar();
+    } catch (error) {
+      console.error('Error borrando flor:', error);
+      alert('Error al borrar: ' + error.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [recargar]);
 
   if (loading) {
     return (
@@ -249,7 +269,9 @@ function PantallaFlores() {
 
       {flores.length === 0 ? (
         <Card>
-          <p className="text-tertiary">No hay flores aún. Crea una nueva flor para comenzar.</p>
+          <p className="text-tertiary">
+            {error ? `⚠️ No se pudieron cargar los datos: ${error}` : 'No hay flores aún. Crea una nueva flor para comenzar.'}
+          </p>
         </Card>
       ) : (
         <div className="table-container">
@@ -280,6 +302,14 @@ function PantallaFlores() {
                         title="Editar"
                       >
                         <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleDelete(flor)}
+                        disabled={deletingId !== null}
+                        title="Borrar"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -333,11 +363,12 @@ function PantallaFlores() {
 }
 
 function PantallaIngredientes() {
-  const { ingredientes, loading } = useIngredientes();
+  const { ingredientes, loading, error, recargar } = useIngredientes();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIng, setEditingIng] = useState(null);
   const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Activo: true });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const tiposIngredientes = ['Cera', 'Oasis', 'Molde', 'Maceta', 'Herramienta', 'Otro'];
 
@@ -387,15 +418,35 @@ function PantallaIngredientes() {
       } else {
         await createPage(DATABASES.INGREDIENTES, props);
       }
+      await recargar();
       handleCloseDialog();
-      window.location.reload();
     } catch (error) {
       console.error('Error guardando ingrediente:', error);
       alert('Error al guardar. Ver consola para detalles.');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingIng, handleCloseDialog]);
+  }, [formData, editingIng, handleCloseDialog, recargar]);
+
+  const handleDelete = useCallback(async (ing) => {
+    setDeletingId(ing.id);
+    try {
+      // Avisar si el ingrediente está en recetas: esos items quedarían sin costo
+      const recetas = await fetchDatabase(DATABASES.RECETAS_INGREDIENTES);
+      const usos = recetas.filter(r => r.Ingrediente?.[0] === ing.id).length;
+      const aviso = usos > 0
+        ? `\n\nOjo: se usa en ${usos} ${usos === 1 ? 'receta' : 'recetas'}; esos items quedarán sin costo.`
+        : '';
+      if (!window.confirm(`¿Borrar "${ing.Nombre}"? Se puede recuperar desde la papelera de Notion.${aviso}`)) return;
+      await archivePage(ing.id);
+      await recargar();
+    } catch (error) {
+      console.error('Error borrando ingrediente:', error);
+      alert('Error al borrar: ' + error.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [recargar]);
 
   if (loading) {
     return (
@@ -419,7 +470,9 @@ function PantallaIngredientes() {
       </div>
       {ingredientes.length === 0 ? (
         <Card>
-          <p className="text-tertiary">No hay ingredientes aún. Crea uno nuevo para comenzar.</p>
+          <p className="text-tertiary">
+            {error ? `⚠️ No se pudieron cargar los datos: ${error}` : 'No hay ingredientes aún. Crea uno nuevo para comenzar.'}
+          </p>
         </Card>
       ) : (
         <div className="table-container">
@@ -452,6 +505,14 @@ function PantallaIngredientes() {
                         title="Editar"
                       >
                         <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleDelete(ing)}
+                        disabled={deletingId !== null}
+                        title="Borrar"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -513,7 +574,7 @@ function PantallaIngredientes() {
 }
 
 function PantallaProductos() {
-  const { productos, loading } = useProductos();
+  const { productos, loading, error, recargar } = useProductos();
   const { tamaños } = useTamaños();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProd, setEditingProd] = useState(null);
@@ -527,6 +588,7 @@ function PantallaProductos() {
     Activo: true,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const resetForm = useCallback(() => {
     setFormData({
@@ -565,8 +627,14 @@ function PantallaProductos() {
   }, [resetForm]);
 
   const handleSave = useCallback(async () => {
-    if (!formData.Nombre.trim()) {
+    const nombre = formData.Nombre.trim();
+    if (!nombre) {
       alert('El nombre es requerido');
+      return;
+    }
+    // Las recetas se enlazan al producto por nombre: debe ser único
+    if (productos.some(p => p.Nombre === nombre && p.id !== editingProd?.id)) {
+      alert(`Ya existe un producto llamado "${nombre}". Cada producto necesita un nombre distinto (las recetas se identifican por nombre).`);
       return;
     }
 
@@ -591,15 +659,42 @@ function PantallaProductos() {
           Activo: { checkbox: formData.Activo },
         });
       }
+      await recargar();
       handleCloseDialog();
-      window.location.reload();
     } catch (error) {
       console.error('Error guardando producto:', error);
       alert('Error al guardar. Ver consola para detalles.');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingProd, handleCloseDialog]);
+  }, [formData, editingProd, productos, handleCloseDialog, recargar]);
+
+  const handleDelete = useCallback(async (prod) => {
+    if (!window.confirm(`¿Borrar "${prod.Nombre}"? También se quita su receta. Todo se puede recuperar desde la papelera de Notion.`)) return;
+    setDeletingId(prod.id);
+    try {
+      // Primero la receta y al final el producto: si algo falla a medias, el
+      // producto sigue visible y se puede reintentar. La receta se enlaza por
+      // nombre, así que solo se limpia si este es el único producto con ese
+      // nombre (homónimos la comparten).
+      const homonimos = productos.filter(p => p.Nombre === prod.Nombre).length;
+      if (homonimos === 1) {
+        const [rf, ri] = await Promise.all([
+          fetchDatabase(DATABASES.RECETAS_FLORES),
+          fetchDatabase(DATABASES.RECETAS_INGREDIENTES),
+        ]);
+        const itemsReceta = [...rf, ...ri].filter(r => r.Producto === prod.Nombre);
+        await Promise.all(itemsReceta.map(r => archivePage(r.id)));
+      }
+      await archivePage(prod.id);
+      await recargar();
+    } catch (error) {
+      console.error('Error borrando producto:', error);
+      alert('Error al borrar: ' + error.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [recargar, productos]);
 
   if (loading) {
     return (
@@ -623,7 +718,9 @@ function PantallaProductos() {
       </div>
       {productos.length === 0 ? (
         <Card>
-          <p className="text-tertiary">No hay productos aún. Crea uno nuevo para comenzar.</p>
+          <p className="text-tertiary">
+            {error ? `⚠️ No se pudieron cargar los datos: ${error}` : 'No hay productos aún. Crea uno nuevo para comenzar.'}
+          </p>
         </Card>
       ) : (
         <div className="table-container">
@@ -663,6 +760,14 @@ function PantallaProductos() {
                         title="Editar"
                       >
                         <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleDelete(prod)}
+                        disabled={deletingId !== null}
+                        title="Borrar"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -731,7 +836,7 @@ function PantallaProductos() {
 }
 
 function PantallaCompras() {
-  const { compras, loading } = useCompras();
+  const { compras, loading, error, recargar } = useCompras();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCompra, setEditingCompra] = useState(null);
   const [formData, setFormData] = useState({
@@ -745,6 +850,7 @@ function PantallaCompras() {
     Notas: '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const tiposCompras = ['Flor', 'Ingrediente'];
 
@@ -826,15 +932,30 @@ function PantallaCompras() {
           Notas: { rich_text: [{ text: { content: formData.Notas } }] },
         });
       }
+      await recargar();
       handleCloseDialog();
-      window.location.reload();
     } catch (error) {
       console.error('Error guardando compra:', error);
       alert('Error al guardar. Ver consola para detalles.');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingCompra, handleCloseDialog]);
+  }, [formData, editingCompra, handleCloseDialog, recargar]);
+
+  const handleDelete = useCallback(async (compra) => {
+    const etiqueta = compra.Descripción ? `${compra.Fecha} — ${compra.Descripción}` : compra.Fecha;
+    if (!window.confirm(`¿Borrar la compra del ${etiqueta}? Se puede recuperar desde la papelera de Notion.`)) return;
+    setDeletingId(compra.id);
+    try {
+      await archivePage(compra.id);
+      await recargar();
+    } catch (error) {
+      console.error('Error borrando compra:', error);
+      alert('Error al borrar: ' + error.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [recargar]);
 
   if (loading) {
     return (
@@ -858,7 +979,9 @@ function PantallaCompras() {
       </div>
       {compras.length === 0 ? (
         <Card>
-          <p className="text-tertiary">No hay compras registradas aún.</p>
+          <p className="text-tertiary">
+            {error ? `⚠️ No se pudieron cargar los datos: ${error}` : 'No hay compras registradas aún.'}
+          </p>
         </Card>
       ) : (
         <div className="table-container">
@@ -891,6 +1014,14 @@ function PantallaCompras() {
                         title="Editar"
                       >
                         <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleDelete(compra)}
+                        disabled={deletingId !== null}
+                        title="Borrar"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -982,23 +1113,39 @@ function MargenChip({ margen }) {
 }
 
 function PantallaRecetas() {
-  const { productos, loading: prodLoading } = useProductos();
+  const { productos, loading: prodLoading, recargar: recargarProductos } = useProductos();
   const { flores } = useFlores();
   const { ingredientes } = useIngredientes();
-  const { recetasFlores, recetasIngredientes, loading: recLoading } = useRecetas();
+  const { recetasFlores, recetasIngredientes, loading: recLoading, recargar: recargarRecetas } = useRecetas();
   const [selectedProd, setSelectedProd] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  const [refrescando, setRefrescando] = useState(false);
+  // Ref y no estado: cualquier vía de cierre (botón, ✕, fondo) debe verlo
+  const cambiosRef = useRef(false);
+  const cierreTimeoutRef = useRef(null);
+
   const handleOpenReceta = useCallback((prod) => {
+    if (refrescando) return; // no abrir con datos a medio refrescar
+    clearTimeout(cierreTimeoutRef.current);
     setSelectedProd(prod);
     setIsDialogOpen(true);
+  }, [refrescando]);
+
+  const marcarCambio = useCallback(() => {
+    cambiosRef.current = true;
   }, []);
 
-  const handleCloseReceta = useCallback((huboCambios) => {
+  const handleCloseReceta = useCallback(async () => {
     setIsDialogOpen(false);
-    setTimeout(() => setSelectedProd(null), 300);
-    if (huboCambios) window.location.reload();
-  }, []);
+    cierreTimeoutRef.current = setTimeout(() => setSelectedProd(null), 300);
+    if (cambiosRef.current) {
+      cambiosRef.current = false;
+      setRefrescando(true);
+      await Promise.all([recargarProductos(), recargarRecetas()]);
+      setRefrescando(false);
+    }
+  }, [recargarProductos, recargarRecetas]);
 
   if (prodLoading || recLoading) {
     return (
@@ -1018,7 +1165,9 @@ function PantallaRecetas() {
       <div className="screen__header">
         <div>
           <h2>Recetas de Productos</h2>
-          <p className="subtitle">Toca un producto para armar su receta. El costo se calcula con la merma incluida.</p>
+          <p className="subtitle">
+            {refrescando ? 'Actualizando datos…' : 'Toca un producto para armar su receta. El costo se calcula con la merma incluida.'}
+          </p>
         </div>
       </div>
 
@@ -1064,7 +1213,7 @@ function PantallaRecetas() {
 
       <Dialog
         isOpen={isDialogOpen}
-        onClose={() => handleCloseReceta(false)}
+        onClose={handleCloseReceta}
         title={selectedProd ? `Receta: ${selectedProd.Nombre}` : 'Receta'}
       >
         {selectedProd && (
@@ -1074,6 +1223,7 @@ function PantallaRecetas() {
             ingredientes={ingredientes}
             recetasFlores={recetasFlores}
             recetasIngredientes={recetasIngredientes}
+            onCambio={marcarCambio}
             onClose={handleCloseReceta}
           />
         )}
@@ -1082,7 +1232,7 @@ function PantallaRecetas() {
   );
 }
 
-function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recetasIngredientes, onClose }) {
+function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recetasIngredientes, onCambio, onClose }) {
   // Items ya guardados en Notion para este producto (edición en vivo)
   const [itemsFlores, setItemsFlores] = useState(() =>
     recetasFlores.filter(r => r.Producto === producto.Nombre)
@@ -1093,7 +1243,6 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
   const [nuevaFlor, setNuevaFlor] = useState({ id: '', cantidad: 1 });
   const [nuevoIng, setNuevoIng] = useState({ id: '', cantidad: 1 });
   const [trabajando, setTrabajando] = useState(false);
-  const [huboCambios, setHuboCambios] = useState(false);
 
   const MERMA_DEFAULT = 30; // % de merma estándar
 
@@ -1120,7 +1269,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         'Merma %': MERMA_DEFAULT,
       }]);
       setNuevaFlor({ id: '', cantidad: 1 });
-      setHuboCambios(true);
+      onCambio();
     } catch (error) {
       console.error('Error agregando flor:', error);
       alert('Error al agregar: ' + error.message);
@@ -1149,7 +1298,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         'Merma %': MERMA_DEFAULT,
       }]);
       setNuevoIng({ id: '', cantidad: 1 });
-      setHuboCambios(true);
+      onCambio();
     } catch (error) {
       console.error('Error agregando ingrediente:', error);
       alert('Error al agregar: ' + error.message);
@@ -1165,7 +1314,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       await archivePage(item.recetaId);
       setItemsFlores(prev => prev.filter(r => r.id !== item.recetaId));
       setItemsIngredientes(prev => prev.filter(r => r.id !== item.recetaId));
-      setHuboCambios(true);
+      onCambio();
     } catch (error) {
       console.error('Error eliminando item:', error);
       alert('Error al eliminar: ' + error.message);
@@ -1182,7 +1331,8 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         'Costo total': { number: Math.round(costoTotal * 100) / 100 },
         'Margen real': { number: margen !== null ? Math.round(margen * 10) / 10 : 0 },
       });
-      onClose(true);
+      onCambio();
+      onClose();
     } catch (error) {
       console.error('Error guardando costo:', error);
       alert('Error al guardar el costo: ' + error.message);
@@ -1319,7 +1469,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       )}
 
       <div className="dialog-actions">
-        <button className="btn btn--secondary btn--md" onClick={() => onClose(huboCambios)} disabled={trabajando}>
+        <button className="btn btn--secondary btn--md" onClick={() => onClose()} disabled={trabajando}>
           Cerrar
         </button>
         <button className="btn btn--primary btn--md" onClick={guardarYCerrar} disabled={trabajando}>
@@ -1464,7 +1614,7 @@ function PantallaListaPrecios() {
 }
 
 function PantallaAjustes() {
-  const { ajustes, loading } = useAjustes();
+  const { ajustes, loading, recargar } = useAjustes();
   const [formData, setFormData] = useState({
     'Merma %': 30,
     'Moneda': '$',
@@ -1515,16 +1665,16 @@ function PantallaAjustes() {
         }
       }
 
+      await recargar();
       alert('Ajustes guardados exitosamente!');
       setIsEditing(false);
-      window.location.reload();
     } catch (error) {
       console.error('Error guardando ajustes:', error);
       alert('Error al guardar. Ver consola para detalles.');
     } finally {
       setIsSaving(false);
     }
-  }, [formData]);
+  }, [formData, recargar]);
 
   if (loading) {
     return (

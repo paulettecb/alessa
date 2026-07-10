@@ -55,12 +55,17 @@ export async function notionErrorMessage(response) {
   return data.message || data.code || response.statusText || `HTTP ${response.status}`;
 }
 
+// Trae TODAS las filas (paginando de 100 en 100). Lanza en caso de error para
+// que quien llama decida qué mostrar; no devuelve [] silencioso.
 export async function fetchDatabase(databaseId) {
-  try {
+  const resultados = [];
+  let cursor;
+  do {
     const response = await notionFetch(`/databases/${databaseId}/query`, {
       method: 'POST',
       body: JSON.stringify({
         page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {}),
       }),
     });
 
@@ -69,11 +74,11 @@ export async function fetchDatabase(databaseId) {
     }
 
     const data = await response.json();
-    return data.results.map(page => parsePageProperties(page));
-  } catch (error) {
-    console.error('Error fetching from Notion:', error);
-    return [];
-  }
+    resultados.push(...data.results.map(page => parsePageProperties(page)));
+    cursor = data.has_more ? data.next_cursor : undefined;
+  } while (cursor);
+
+  return resultados;
 }
 
 export async function createPage(databaseId, properties) {
