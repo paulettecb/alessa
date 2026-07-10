@@ -1,18 +1,14 @@
-export function Greeting({ name = 'Ale' }) {
+export function saludoDelDia() {
   const hour = new Date().getHours();
+  if (hour < 12) return 'Buenos días';
+  if (hour < 18) return 'Buenas tardes';
+  return 'Buenas noches';
+}
 
-  let greeting;
-  if (hour < 12) {
-    greeting = 'Buenos días';
-  } else if (hour < 18) {
-    greeting = 'Buenas tardes';
-  } else {
-    greeting = 'Buenas noches';
-  }
-
+export function Greeting({ name = 'Ale' }) {
   return (
     <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 0 }}>
-      {greeting}, <strong>{name}</strong>
+      {saludoDelDia()}, <strong>{name}</strong>
     </p>
   );
 }

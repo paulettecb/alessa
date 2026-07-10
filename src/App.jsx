@@ -4,7 +4,7 @@ import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
-import { Greeting } from './components/Greeting';
+import { saludoDelDia } from './components/Greeting';
 import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
 import { createPage, updatePage, archivePage, notionFetch, DATABASES } from './lib/notionClient';
 import { calcularReceta, calcularMargen, formatoMoneda } from './lib/costos';
@@ -39,7 +39,7 @@ function App() {
         <button className="topbar-menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menú">
           <Menu size={22} />
         </button>
-        <span className="topbar-title">Alessa</span>
+        <span className="topbar-title">ALESSA</span>
         <span className="topbar-flor">🌸</span>
       </header>
 
@@ -49,12 +49,15 @@ function App() {
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="sidebar__header">
-          <h1 className="sidebar__title">Alessa</h1>
+          <div className="sidebar__marca">
+            <span className="sidebar__wordmark">ALESSA</span>
+            <span className="sidebar__script">Velas que Florecen</span>
+          </div>
           <button
             className="sidebar__toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            <X size={20} />
           </button>
         </div>
 
@@ -67,16 +70,12 @@ function App() {
                 className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
                 onClick={() => handleNav(item.id)}
               >
-                <Icon size={20} />
+                <Icon size={17} />
                 <span>{item.label}</span>
               </button>
             );
           })}
         </nav>
-
-        <div className="sidebar__footer">
-          <p className="tagline">Velas que Florecen</p>
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -114,43 +113,32 @@ function PantallaInicio() {
     <div className="screen">
       <div className="screen__header">
         <div>
-          <Greeting name="Ale" />
-          <h2 style={{ marginTop: 'var(--spacing-lg)' }}>Bienvenida a Alessa</h2>
-          <p className="subtitle">Velas que Florecen — Sistema de Gestión</p>
+          <h2 style={{ marginBottom: 'var(--spacing-sm)' }}>{saludoDelDia()}, Ale</h2>
+          <p className="subtitle">Aquí está el pulso de tus velas que florecen.</p>
         </div>
       </div>
 
       <div className="grid stats-grid gap-lg">
         <Card className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'var(--terracotta-100)', color: 'var(--terracotta-600)' }}>
-            <Package size={22} />
-          </div>
+          <div className="stat-label"><span>Productos activos</span><Package size={15} /></div>
           <div className="stat-value">{activos.length}</div>
-          <div className="stat-label">Productos Activos</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'var(--sage-100)', color: 'var(--sage-600)' }}>
-            <Flower size={22} />
-          </div>
+          <div className="stat-label"><span>Flores en catálogo</span><Flower size={15} /></div>
           <div className="stat-value">{floresActivas}</div>
-          <div className="stat-label">Flores en Catálogo</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'var(--success-100)', color: 'var(--success-600)' }}>
-            <Leaf size={22} />
-          </div>
+          <div className="stat-label"><span>Ingredientes</span><Leaf size={15} /></div>
           <div className="stat-value">{ingredientes.length}</div>
-          <div className="stat-label">Ingredientes</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'var(--gold-200)', color: 'var(--gold-600)' }}>
-            <TrendingUp size={22} />
+          <div className="stat-label"><span>Margen promedio</span><TrendingUp size={15} /></div>
+          <div className="stat-value" style={{ color: 'var(--accent-primary)' }}>
+            {margenPromedio !== null ? `${margenPromedio.toFixed(0)}%` : '—'}
           </div>
-          <div className="stat-value">{margenPromedio !== null ? `${margenPromedio.toFixed(0)}%` : '—'}</div>
-          <div className="stat-label">Margen Promedio</div>
         </Card>
       </div>
 

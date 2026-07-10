@@ -11,10 +11,9 @@ html {
 }
 
 body {
-  font-family: var(--font-ui);
+  font: var(--text-body-m);
   background-color: var(--bg-page);
   color: var(--text-primary);
-  line-height: var(--line-height-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -24,16 +23,15 @@ body {
   min-height: 100vh;
 }
 
-/* Typography defaults */
+/* Typography defaults — display serif para títulos, sans para subtítulos */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
-  line-height: var(--line-height-tight);
   margin-bottom: var(--spacing-lg);
 }
 
-h1 { font-size: var(--text-xl); font-weight: 400; }
-h2 { font-size: var(--text-lg); font-weight: 400; }
-h3 { font-size: var(--text-base); font-weight: 600; }
+h1 { font: var(--text-display-l); }
+h2 { font: var(--text-display-m); }
+h3 { font: var(--text-heading-m); }
+h4 { font: var(--text-heading-s); }
 
 p {
   margin-bottom: var(--spacing-md);

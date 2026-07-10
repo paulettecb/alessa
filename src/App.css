@@ -5,43 +5,51 @@
   background-color: var(--bg-page);
 }
 
-/* Sidebar */
+/* Sidebar — canónico del Alessa Design System */
 .sidebar {
-  width: 280px;
-  background-color: var(--bg-inverse);
+  width: 232px;
+  flex-shrink: 0;
+  background-color: var(--sage-900);
   color: var(--text-on-inverse);
   display: flex;
   flex-direction: column;
-  transition: width var(--transition-standard);
-  border-right: 1px solid var(--border-strong);
+  gap: 32px;
+  padding: 28px 16px;
   overflow-y: auto;
 }
 
-.sidebar.closed {
-  width: 60px;
-}
-
 .sidebar__header {
+  position: relative;
   display: flex;
+  justify-content: center;
+}
+
+.sidebar__marca {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-lg);
-  border-bottom: 1px solid rgba(238, 240, 229, 0.1);
+  gap: 4px;
 }
 
-.sidebar__title {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: 400;
-  margin: 0;
+.sidebar__wordmark {
+  font: 500 24px var(--font-display);
+  letter-spacing: var(--tracking-wordmark);
+  color: var(--paper-100);
+  /* compensa el tracking del último carácter para que se vea centrado */
+  margin-right: calc(-1 * var(--tracking-wordmark));
 }
 
-.sidebar.closed .sidebar__title {
-  display: none;
+.sidebar__script {
+  font-family: var(--font-script);
+  font-size: 16px;
+  color: var(--sage-400);
 }
 
 .sidebar__toggle {
   display: none;
+  position: absolute;
+  top: -12px;
+  right: -4px;
   background: none;
   border: none;
   color: var(--text-on-inverse);
@@ -64,67 +72,36 @@
 /* Navigation */
 .sidebar__nav {
   flex: 1;
-  padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 4px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md) var(--spacing-lg);
-  background: none;
+  gap: 12px;
+  padding: 11px 14px;
+  background: transparent;
   border: none;
-  color: var(--text-on-inverse);
+  color: var(--sage-300);
   cursor: pointer;
   border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
   text-align: left;
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  font: var(--text-body-m);
   white-space: nowrap;
 }
 
 .nav-item:hover {
-  background-color: rgba(238, 240, 229, 0.1);
+  background-color: var(--sage-800);
+  color: var(--paper-100);
 }
 
 .nav-item.active {
-  background-color: var(--accent-primary);
-  color: var(--white);
-  font-weight: 600;
-}
-
-.sidebar.closed .nav-item span {
-  display: none;
-}
-
-.sidebar.closed .nav-item {
-  justify-content: center;
-  padding: var(--spacing-md);
-}
-
-/* Footer */
-.sidebar__footer {
-  padding: var(--spacing-lg);
-  border-top: 1px solid rgba(238, 240, 229, 0.1);
-  text-align: center;
-}
-
-.tagline {
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  color: rgba(238, 240, 229, 0.6);
-  margin: 0;
-  letter-spacing: 0.5px;
-}
-
-.sidebar.closed .tagline {
-  font-size: 0.6rem;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  background-color: var(--sage-800);
+  color: var(--paper-100);
+  font-weight: 500;
 }
 
 /* Main Content */
@@ -150,14 +127,13 @@
 
 .screen__header h2 {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
+  font: var(--text-display-m);
 }
 
 .subtitle {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
-  margin: var(--spacing-md) 0 0 0;
+  font: var(--text-body-m);
+  margin: var(--spacing-sm) 0 0 0;
 }
 
 /* Grid */
@@ -182,21 +158,24 @@
 
 /* Utility Classes */
 .stat-card {
-  text-align: center;
-  padding: var(--spacing-xl);
-}
-
-.stat-value {
-  font-family: var(--font-mono);
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--accent-primary);
-  margin-bottom: var(--spacing-md);
+  text-align: left;
 }
 
 .stat-label {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font: var(--text-label-caps);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font: var(--text-display-s);
+  color: var(--text-primary);
 }
 
 .mt-xl {
@@ -237,11 +216,10 @@
 .table th {
   padding: var(--spacing-md) var(--spacing-lg);
   text-align: left;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font: var(--text-label-caps);
+  color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
 }
 
 .table td {
@@ -517,8 +495,9 @@
   }
 
   .topbar-title {
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
+    font: 500 18px var(--font-display);
+    letter-spacing: var(--tracking-wordmark);
+    color: var(--paper-100);
   }
 
   .topbar-flor {
@@ -536,7 +515,7 @@
     top: 0;
     left: 0;
     bottom: 0;
-    width: 280px;
+    width: 264px;
     z-index: 200;
     transform: translateX(-100%);
     transition: transform var(--transition-standard);
@@ -545,22 +524,6 @@
   .sidebar.open {
     transform: none;
     box-shadow: var(--shadow-lg);
-  }
-
-  .sidebar.closed .sidebar__title,
-  .sidebar.closed .nav-item span {
-    display: block;
-  }
-
-  .sidebar.closed .nav-item {
-    justify-content: flex-start;
-    padding: var(--spacing-md) var(--spacing-lg);
-  }
-
-  .sidebar.closed .tagline {
-    writing-mode: horizontal-tb;
-    transform: none;
-    font-size: var(--text-xs);
   }
 
   .sidebar-backdrop {
