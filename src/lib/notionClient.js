@@ -48,6 +48,13 @@ export async function notionFetch(path, options = {}) {
   return response;
 }
 
+// Extrae el mensaje real de un error de la API (el statusText de las
+// respuestas de Netlify llega vacío, así que hay que leer el cuerpo).
+export async function notionErrorMessage(response) {
+  const data = await response.clone().json().catch(() => ({}));
+  return data.message || data.code || response.statusText || `HTTP ${response.status}`;
+}
+
 export async function fetchDatabase(databaseId) {
   try {
     const response = await notionFetch(`/databases/${databaseId}/query`, {
@@ -58,7 +65,7 @@ export async function fetchDatabase(databaseId) {
     });
 
     if (!response.ok) {
-      throw new Error(`Notion API error: ${response.statusText}`);
+      throw new Error(`Notion API error: ${await notionErrorMessage(response)}`);
     }
 
     const data = await response.json();
@@ -80,7 +87,7 @@ export async function createPage(databaseId, properties) {
     });
 
     if (!response.ok) {
-      throw new Error(`Notion API error: ${response.statusText}`);
+      throw new Error(`Notion API error: ${await notionErrorMessage(response)}`);
     }
 
     return await response.json();
@@ -98,7 +105,7 @@ export async function updatePage(pageId, properties) {
     });
 
     if (!response.ok) {
-      throw new Error(`Notion API error: ${response.statusText}`);
+      throw new Error(`Notion API error: ${await notionErrorMessage(response)}`);
     }
 
     return await response.json();
