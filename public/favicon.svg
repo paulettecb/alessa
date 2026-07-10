@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Alessa · florecita: pétalos terracota, centro dorado -->
+  <g transform="translate(256 256)">
+    <g fill="#c37f4f">
+      <ellipse cx="0" cy="-118" rx="82" ry="122"/>
+      <ellipse cx="0" cy="-118" rx="82" ry="122" transform="rotate(72)"/>
+      <ellipse cx="0" cy="-118" rx="82" ry="122" transform="rotate(144)"/>
+      <ellipse cx="0" cy="-118" rx="82" ry="122" transform="rotate(216)"/>
+      <ellipse cx="0" cy="-118" rx="82" ry="122" transform="rotate(288)"/>
+    </g>
+    <g fill="#d6a578">
+      <ellipse cx="0" cy="-112" rx="46" ry="80"/>
+      <ellipse cx="0" cy="-112" rx="46" ry="80" transform="rotate(72)"/>
+      <ellipse cx="0" cy="-112" rx="46" ry="80" transform="rotate(144)"/>
+      <ellipse cx="0" cy="-112" rx="46" ry="80" transform="rotate(216)"/>
+      <ellipse cx="0" cy="-112" rx="46" ry="80" transform="rotate(288)"/>
+    </g>
+    <circle r="70" fill="#cba85f"/>
+    <circle r="70" fill="none" stroke="#a3823f" stroke-width="10"/>
+    <circle r="26" fill="#a3823f"/>
+  </g>
+</svg>

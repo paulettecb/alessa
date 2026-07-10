@@ -1,0 +1,27 @@
+{
+  "name": "Alessa — Velas que Florecen",
+  "short_name": "Alessa",
+  "description": "Gestión de velas y ramos: flores, ingredientes, recetas, compras y precios.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf2e9",
+  "theme_color": "#fbf2e9",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
