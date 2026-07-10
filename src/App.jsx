@@ -5,6 +5,7 @@ import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { saludoDelDia } from './components/Greeting';
+import { ToastProvider, useToast } from './components/Toast';
 import { useFlores, useIngredientes, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
 import { createPage, updatePage, archivePage, notionFetch, fetchDatabase, DATABASES } from './lib/notionClient';
 import { calcularReceta, calcularMargen, formatoMoneda, sincronizarCostos } from './lib/costos';
@@ -54,6 +55,7 @@ function App() {
   ];
 
   return (
+    <ToastProvider>
     <AjustesContext.Provider value={ajustesGlobal}>
     <div className="app">
       {/* Barra superior (solo móvil) */}
@@ -98,6 +100,21 @@ function App() {
             );
           })}
         </nav>
+
+        <div className="sidebar__estado">
+          <span
+            className={`estado-dot ${
+              ajustesGlobal.error ? 'estado-dot--error' : ajustesGlobal.loading ? 'estado-dot--cargando' : 'estado-dot--ok'
+            }`}
+          />
+          <span>
+            {ajustesGlobal.error
+              ? 'Sin conexión con Notion'
+              : ajustesGlobal.loading
+                ? 'Conectando…'
+                : 'Sincronizado con Notion'}
+          </span>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -113,6 +130,7 @@ function App() {
       </main>
     </div>
     </AjustesContext.Provider>
+    </ToastProvider>
   );
 }
 
@@ -203,6 +221,7 @@ function PantallaInicio() {
 function PantallaFlores() {
   const { flores, loading, error, recargar } = useFlores();
   const { moneda } = useAjustesGlobal();
+  const avisar = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFlor, setEditingFlor] = useState(null);
   const [formData, setFormData] = useState({ Nombre: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activa: true });
@@ -237,7 +256,7 @@ function PantallaFlores() {
 
   const handleSave = useCallback(async () => {
     if (!formData.Nombre.trim()) {
-      alert('El nombre es requerido');
+      avisar('El nombre es requerido', 'error');
       return;
     }
 
@@ -262,13 +281,14 @@ function PantallaFlores() {
       }
       await recargar();
       handleCloseDialog();
+      avisar(editingFlor ? 'Flor actualizada' : 'Flor guardada');
     } catch (error) {
       console.error('Error guardando flor:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      avisar('No se pudo guardar la flor', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingFlor, handleCloseDialog, recargar]);
+  }, [formData, editingFlor, handleCloseDialog, recargar, avisar]);
 
   const handleDelete = useCallback(async (flor) => {
     setDeletingId(flor.id);
@@ -283,13 +303,14 @@ function PantallaFlores() {
       await archivePage(flor.id);
       if (usos > 0) await sincronizarCostos();
       await recargar();
+      avisar('Flor borrada');
     } catch (error) {
       console.error('Error borrando flor:', error);
-      alert('Error al borrar: ' + error.message);
+      avisar('No se pudo borrar la flor', 'error');
     } finally {
       setDeletingId(null);
     }
-  }, [recargar]);
+  }, [recargar, avisar]);
 
   if (loading) {
     return (
@@ -421,6 +442,7 @@ function PantallaFlores() {
 function PantallaIngredientes() {
   const { ingredientes, loading, error, recargar } = useIngredientes();
   const { moneda } = useAjustesGlobal();
+  const avisar = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIng, setEditingIng] = useState(null);
   const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activo: true });
@@ -458,7 +480,7 @@ function PantallaIngredientes() {
 
   const handleSave = useCallback(async () => {
     if (!formData.Nombre.trim()) {
-      alert('El nombre es requerido');
+      avisar('El nombre es requerido', 'error');
       return;
     }
 
@@ -484,13 +506,14 @@ function PantallaIngredientes() {
       }
       await recargar();
       handleCloseDialog();
+      avisar(editingIng ? 'Ingrediente actualizado' : 'Ingrediente guardado');
     } catch (error) {
       console.error('Error guardando ingrediente:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      avisar('No se pudo guardar el ingrediente', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingIng, handleCloseDialog, recargar]);
+  }, [formData, editingIng, handleCloseDialog, recargar, avisar]);
 
   const handleDelete = useCallback(async (ing) => {
     setDeletingId(ing.id);
@@ -505,13 +528,14 @@ function PantallaIngredientes() {
       await archivePage(ing.id);
       if (usos > 0) await sincronizarCostos();
       await recargar();
+      avisar('Ingrediente borrado');
     } catch (error) {
       console.error('Error borrando ingrediente:', error);
-      alert('Error al borrar: ' + error.message);
+      avisar('No se pudo borrar el ingrediente', 'error');
     } finally {
       setDeletingId(null);
     }
-  }, [recargar]);
+  }, [recargar, avisar]);
 
   if (loading) {
     return (
@@ -652,6 +676,7 @@ function PantallaIngredientes() {
 function PantallaProductos() {
   const { productos, loading, error, recargar } = useProductos();
   const { moneda } = useAjustesGlobal();
+  const avisar = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProd, setEditingProd] = useState(null);
   const [formData, setFormData] = useState({
@@ -702,12 +727,12 @@ function PantallaProductos() {
   const handleSave = useCallback(async () => {
     const nombre = formData.Nombre.trim();
     if (!nombre) {
-      alert('El nombre es requerido');
+      avisar('El nombre es requerido', 'error');
       return;
     }
     // Las recetas se enlazan al producto por nombre: debe ser único
     if (productos.some(p => p.Nombre === nombre && p.id !== editingProd?.id)) {
-      alert(`Ya existe un producto llamado "${nombre}". Cada producto necesita un nombre distinto (las recetas se identifican por nombre).`);
+      avisar(`Ya existe un producto llamado "${nombre}" — usa un nombre distinto`, 'error');
       return;
     }
 
@@ -741,13 +766,14 @@ function PantallaProductos() {
       }
       await recargar();
       handleCloseDialog();
+      avisar(editingProd ? 'Producto actualizado' : 'Producto guardado');
     } catch (error) {
       console.error('Error guardando producto:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      avisar('No se pudo guardar el producto', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingProd, productos, handleCloseDialog, recargar]);
+  }, [formData, editingProd, productos, handleCloseDialog, recargar, avisar]);
 
   const handleDelete = useCallback(async (prod) => {
     if (!window.confirm(`¿Borrar "${prod.Nombre}"? También se quita su receta. Todo se puede recuperar desde la papelera de Notion.`)) return;
@@ -768,13 +794,14 @@ function PantallaProductos() {
       }
       await archivePage(prod.id);
       await recargar();
+      avisar('Producto borrado');
     } catch (error) {
       console.error('Error borrando producto:', error);
-      alert('Error al borrar: ' + error.message);
+      avisar('No se pudo borrar el producto', 'error');
     } finally {
       setDeletingId(null);
     }
-  }, [recargar, productos]);
+  }, [recargar, productos, avisar]);
 
   if (loading) {
     return (
@@ -920,6 +947,7 @@ function PantallaCompras() {
   const { flores, recargar: recargarFlores } = useFlores();
   const { ingredientes, recargar: recargarIngredientes } = useIngredientes();
   const { moneda } = useAjustesGlobal();
+  const avisar = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCompra, setEditingCompra] = useState(null);
   const [formData, setFormData] = useState({
@@ -996,7 +1024,7 @@ function PantallaCompras() {
 
   const handleSave = useCallback(async () => {
     if (!formData.Fecha || !formData.Proveedor.trim()) {
-      alert('Fecha y proveedor son requeridos');
+      avisar('Fecha y proveedor son requeridos', 'error');
       return;
     }
 
@@ -1042,18 +1070,24 @@ function PantallaCompras() {
             await updatePage(articulo.id, cambios);
             if (costoSubio) await sincronizarCostos();
             await (formData.Tipo === 'Flor' ? recargarFlores() : recargarIngredientes());
+            avisar(
+              costoSubio
+                ? `Costo de "${articulo.Nombre}" actualizado y productos recalculados`
+                : `Existencias de "${articulo.Nombre}" actualizadas`
+            );
           }
         }
       }
       await recargar();
       handleCloseDialog();
+      avisar(editingCompra ? 'Compra actualizada' : 'Compra registrada');
     } catch (error) {
       console.error('Error guardando compra:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      avisar('No se pudo guardar la compra', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingCompra, catalogo, moneda, handleCloseDialog, recargar, recargarFlores, recargarIngredientes]);
+  }, [formData, editingCompra, catalogo, moneda, handleCloseDialog, recargar, recargarFlores, recargarIngredientes, avisar]);
 
   const handleDelete = useCallback(async (compra) => {
     const etiqueta = compra.Descripción ? `${compra.Fecha} — ${compra.Descripción}` : compra.Fecha;
@@ -1062,13 +1096,14 @@ function PantallaCompras() {
     try {
       await archivePage(compra.id);
       await recargar();
+      avisar('Compra borrada');
     } catch (error) {
       console.error('Error borrando compra:', error);
-      alert('Error al borrar: ' + error.message);
+      avisar('No se pudo borrar la compra', 'error');
     } finally {
       setDeletingId(null);
     }
-  }, [recargar]);
+  }, [recargar, avisar]);
 
   if (loading) {
     return (
@@ -1370,6 +1405,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
   const [trabajando, setTrabajando] = useState(false);
 
   const { moneda, mermaDefault } = useAjustesGlobal();
+  const avisar = useToast();
 
   const { items, costoTotal } = calcularReceta(producto, itemsFlores, itemsIngredientes, flores, ingredientes);
   const margen = calcularMargen(producto['Precio de venta'], costoTotal);
@@ -1410,7 +1446,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       onCambio();
     } catch (error) {
       console.error('Error agregando flor:', error);
-      alert('Error al agregar: ' + error.message);
+      avisar('No se pudo agregar la flor', 'error');
     } finally {
       setTrabajando(false);
     }
@@ -1441,7 +1477,28 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       onCambio();
     } catch (error) {
       console.error('Error agregando ingrediente:', error);
-      alert('Error al agregar: ' + error.message);
+      avisar('No se pudo agregar el ingrediente', 'error');
+    } finally {
+      setTrabajando(false);
+    }
+  };
+
+  // Cambiar la cantidad de un item ya guardado, directo en la tabla
+  const cambiarCantidad = async (item, cantidad) => {
+    if (trabajando || cantidad === item.cantidad) return;
+    setTrabajando(true);
+    try {
+      await updatePage(item.recetaId, { Cantidad: { number: cantidad } });
+      const actualizar = rows => rows.map(r => (r.id === item.recetaId ? { ...r, Cantidad: cantidad } : r));
+      const nuevosFlores = actualizar(itemsFlores);
+      const nuevosIngredientes = actualizar(itemsIngredientes);
+      setItemsFlores(nuevosFlores);
+      setItemsIngredientes(nuevosIngredientes);
+      await persistirCosto(nuevosFlores, nuevosIngredientes);
+      onCambio();
+    } catch (error) {
+      console.error('Error cambiando cantidad:', error);
+      avisar('No se pudo cambiar la cantidad', 'error');
     } finally {
       setTrabajando(false);
     }
@@ -1460,7 +1517,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       onCambio();
     } catch (error) {
       console.error('Error eliminando item:', error);
-      alert('Error al eliminar: ' + error.message);
+      avisar('No se pudo eliminar el item', 'error');
     } finally {
       setTrabajando(false);
     }
@@ -1569,9 +1626,19 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
             </thead>
             <tbody>
               {items.map(it => (
-                <tr key={it.recetaId}>
+                <tr key={`${it.recetaId}-${it.cantidad}`}>
                   <td>{it.tipo === 'flor' ? '🌸' : '🕯️'} {it.nombre}</td>
-                  <td>{it.cantidad}</td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      className="receta-cantidad receta-cantidad--tabla"
+                      defaultValue={it.cantidad}
+                      disabled={trabajando}
+                      onBlur={e => cambiarCantidad(it, parseInt(e.target.value) || 1)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                    />
+                  </td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>
                     {it.costoUnitario ? formatoMoneda(it.costoUnitario, moneda) : <span className="text-tertiary">—</span>}
                   </td>
@@ -1609,6 +1676,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
 function PantallaListaPrecios() {
   const { productos, loading } = useProductos();
   const { ajustes, moneda } = useAjustesGlobal();
+  const [vista, setVista] = useState('documento');
   const productosActivos = productos.filter(p => p.Activo);
 
   const handlePrint = () => {
@@ -1632,16 +1700,42 @@ function PantallaListaPrecios() {
     <div className="screen">
       <div className="screen__header">
         <h2>Lista de Precios</h2>
-        <Button onClick={handlePrint}>
-          <Printer size={18} style={{ marginRight: 'var(--spacing-sm)' }} />
-          Imprimir
-        </Button>
+        <div style={{ display: 'flex', gap: 'var(--spacing-md)', alignItems: 'center' }}>
+          <div className="vista-toggle">
+            <button className={vista === 'documento' ? 'activo' : ''} onClick={() => setVista('documento')}>
+              Documento
+            </button>
+            <button className={vista === 'tarjetas' ? 'activo' : ''} onClick={() => setVista('tarjetas')}>
+              Tarjetas
+            </button>
+          </div>
+          {vista === 'documento' && (
+            <Button onClick={handlePrint}>
+              <Printer size={18} style={{ marginRight: 'var(--spacing-sm)' }} />
+              Imprimir
+            </Button>
+          )}
+        </div>
       </div>
 
       {productosActivos.length === 0 ? (
         <Card>
           <p className="text-tertiary">No hay productos activos. Crea productos en la pantalla de Productos.</p>
         </Card>
+      ) : vista === 'tarjetas' ? (
+        <div className="precios-tarjetas">
+          {productosActivos.map(prod => (
+            <Card key={prod.id} className="precio-tarjeta">
+              <span className="precio-tarjeta__flor">🌸</span>
+              <h3 className="precio-tarjeta__nombre">{prod.Nombre}</h3>
+              {prod.Descripción && <p className="precio-tarjeta__desc">{prod.Descripción}</p>}
+              <div className="precio-tarjeta__precio">{formatoMoneda(prod['Precio de venta'], moneda)}</div>
+              {prod['Descuento por volumen'] > 0 && (
+                <span className="chip chip--bueno">-{prod['Descuento por volumen']}% por volumen</span>
+              )}
+            </Card>
+          ))}
+        </div>
       ) : (
         <>
           <div className="lista-precios-container" style={{ backgroundColor: 'white', padding: 'var(--spacing-2xl)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', marginBottom: 'var(--spacing-2xl)' }}>
@@ -1740,6 +1834,7 @@ function PantallaListaPrecios() {
 
 function PantallaAjustes() {
   const { ajustes, loading, recargar } = useAjustesGlobal();
+  const avisar = useToast();
   const [formData, setFormData] = useState({
     'Merma %': 30,
     'Moneda': '$',
@@ -1793,15 +1888,15 @@ function PantallaAjustes() {
       }
 
       await recargar();
-      alert('Ajustes guardados exitosamente!');
       setIsEditing(false);
+      avisar('Ajustes guardados');
     } catch (error) {
       console.error('Error guardando ajustes:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      avisar('No se pudieron guardar los ajustes', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [formData, recargar]);
+  }, [formData, recargar, avisar]);
 
   if (loading) {
     return (

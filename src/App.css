@@ -104,6 +104,35 @@
   font-weight: 500;
 }
 
+/* Indicador de conexión con Notion (pie del sidebar) */
+.sidebar__estado {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 14px;
+  font-size: var(--text-xs);
+  color: var(--sage-400);
+}
+
+.estado-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.estado-dot--ok {
+  background-color: var(--success-600);
+}
+
+.estado-dot--cargando {
+  background-color: var(--warning-600);
+}
+
+.estado-dot--error {
+  background-color: var(--danger-600);
+}
+
 /* Main Content */
 .main-content {
   flex: 1;
@@ -456,6 +485,77 @@
   margin-bottom: var(--spacing-lg);
 }
 
+.receta-cantidad--tabla {
+  width: 64px;
+  padding: var(--spacing-sm);
+  text-align: center;
+}
+
+/* ==========================================================================
+   Lista de precios: toggle de vista y tarjetas
+   ========================================================================== */
+.vista-toggle {
+  display: inline-flex;
+  background-color: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+}
+
+.vista-toggle button {
+  border: none;
+  background: transparent;
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  font: var(--text-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.vista-toggle button.activo {
+  background-color: var(--bg-surface-raised);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.precios-tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.precio-tarjeta {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.precio-tarjeta__flor {
+  font-size: 22px;
+}
+
+.precio-tarjeta__nombre {
+  margin: 0;
+  font: var(--text-heading-m);
+}
+
+.precio-tarjeta__desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.precio-tarjeta__precio {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-top: var(--spacing-xs);
+}
+
 /* ==========================================================================
    Móvil
    ========================================================================== */
@@ -569,6 +669,17 @@
   .dialog__header,
   .dialog__content {
     padding: var(--spacing-lg);
+  }
+
+  /* iOS hace zoom al enfocar inputs con fuente menor a 16px */
+  input,
+  select,
+  textarea,
+  .input,
+  .form-field__select,
+  .form-field__textarea,
+  .receta-cantidad {
+    font-size: 16px !important;
   }
 }
 
