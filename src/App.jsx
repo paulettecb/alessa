@@ -908,14 +908,344 @@ function PantallaCompras() {
 }
 
 function PantallaRecetas() {
+  const { productos, loading: prodLoading } = useProductos();
+  const { flores } = useFlores();
+  const { ingredientes } = useIngredientes();
+  const [recetasFlores, setRecetasFlores] = useState([]);
+  const [recetasIngredientes, setRecetasIngredientes] = useState([]);
+  const [selectedProd, setSelectedProd] = useState(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Simular carga de recetas desde Notion
+  useEffect(() => {
+    // Fetch recetas desde Notion
+    (async () => {
+      try {
+        const flores = await fetch(`https://api.notion.com/v1/databases/${DATABASES.RECETAS_FLORES}/query`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
+            'Notion-Version': '2022-06-28',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ page_size: 100 }),
+        }).then(r => r.json());
+        setRecetasFlores(flores.results || []);
+
+        const ingredientes = await fetch(`https://api.notion.com/v1/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
+            'Notion-Version': '2022-06-28',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ page_size: 100 }),
+        }).then(r => r.json());
+        setRecetasIngredientes(ingredientes.results || []);
+      } catch (error) {
+        console.error('Error cargando recetas:', error);
+      }
+    })();
+  }, []);
+
+  const handleOpenReceta = useCallback((prod) => {
+    setSelectedProd(prod);
+    setIsDialogOpen(true);
+  }, []);
+
+  const handleCloseReceta = useCallback(() => {
+    setIsDialogOpen(false);
+    setTimeout(() => setSelectedProd(null), 300);
+  }, []);
+
+  if (prodLoading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Recetas</h2>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando recetas...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Recetas</h2>
+        <h2>Recetas de Productos</h2>
       </div>
-      <Card>
-        <p className="text-tertiary">Aquí verás las recetas de tus productos. Agrégalas desde la pantalla de Productos.</p>
-      </Card>
+
+      {productos.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay productos. Crea uno primero en la pantalla de Productos.</p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-lg">
+          {productos.map(prod => {
+            const floresReceta = recetasFlores.filter(r => r.properties?.['Producto']?.title?.[0]?.plain_text === prod.Nombre);
+            const ingReceta = recetasIngredientes.filter(r => r.properties?.['Producto']?.title?.[0]?.plain_text === prod.Nombre);
+            const totalItems = floresReceta.length + ingReceta.length;
+
+            return (
+              <Card key={prod.id} className="receta-card" onClick={() => handleOpenReceta(prod)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                  <div>
+                    <h3 style={{ margin: 0, marginBottom: 'var(--spacing-sm)', cursor: 'pointer' }}>
+                      {prod.Nombre}
+                    </h3>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+                      {prod.Descripción}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                      {totalItems}
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {totalItems === 1 ? 'item' : 'items'}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog
+        isOpen={isDialogOpen}
+        onClose={handleCloseReceta}
+        title={selectedProd ? `Receta: ${selectedProd.Nombre}` : 'Receta'}
+      >
+        {selectedProd && (
+          <RecetaFormulario
+            producto={selectedProd}
+            flores={flores}
+            ingredientes={ingredientes}
+            onClose={handleCloseReceta}
+          />
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+function RecetaFormulario({ producto, flores, ingredientes, onClose }) {
+  const [floresAgregadas, setFloresAgregadas] = useState([]);
+  const [ingredientesAgregados, setIngredientesAgregados] = useState([]);
+  const [floresReceta, setFloresReceta] = useState({ flor: '', cantidad: 1 });
+  const [ingredientesReceta, setIngredientesReceta] = useState({ ingrediente: '', cantidad: 1 });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const MERMA = 0.30; // 30%
+
+  const handleAgregarFlor = useCallback(() => {
+    if (!floresReceta.flor) return;
+    const flor = flores.find(f => f.id === floresReceta.flor);
+    if (flor) {
+      setFloresAgregadas([...floresAgregadas, { ...flor, cantidadReceta: floresReceta.cantidad }]);
+      setFloresReceta({ flor: '', cantidad: 1 });
+    }
+  }, [floresReceta, flores, floresAgregadas]);
+
+  const handleAgregarIngrediente = useCallback(() => {
+    if (!ingredientesReceta.ingrediente) return;
+    const ing = ingredientes.find(i => i.id === ingredientesReceta.ingrediente);
+    if (ing) {
+      setIngredientesAgregados([...ingredientesAgregados, { ...ing, cantidadReceta: ingredientesReceta.cantidad }]);
+      setIngredientesReceta({ ingrediente: '', cantidad: 1 });
+    }
+  }, [ingredientesReceta, ingredientes, ingredientesAgregados]);
+
+  const handleEliminarFlor = useCallback((id) => {
+    setFloresAgregadas(floresAgregadas.filter(f => f.id !== id));
+  }, [floresAgregadas]);
+
+  const handleEliminarIngrediente = useCallback((id) => {
+    setIngredientesAgregados(ingredientesAgregados.filter(i => i.id !== id));
+  }, [ingredientesAgregados]);
+
+  const handleGuardar = useCallback(async () => {
+    if (floresAgregadas.length === 0 && ingredientesAgregados.length === 0) {
+      alert('Agrega al menos un item a la receta');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Guardar flores de la receta
+      for (const flor of floresAgregadas) {
+        await createPage(DATABASES.RECETAS_FLORES, {
+          Producto: { title: [{ text: { content: producto.Nombre } }] },
+          Variante: { relation: [{ id: flor.id }] },
+          Cantidad: { number: flor.cantidadReceta },
+          Unidad: { select: { name: 'Unidades' } },
+          'Merma %': { number: MERMA * 100 },
+        });
+      }
+
+      // Guardar ingredientes de la receta
+      for (const ing of ingredientesAgregados) {
+        await createPage(DATABASES.RECETAS_INGREDIENTES, {
+          Producto: { title: [{ text: { content: producto.Nombre } }] },
+          Subtipo: { relation: [{ id: ing.id }] },
+          Cantidad: { number: ing.cantidadReceta },
+          Unidad: { select: { name: 'Unidades' } },
+          'Merma %': { number: MERMA * 100 },
+        });
+      }
+
+      alert('Receta guardada exitosamente!');
+      onClose();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error guardando receta:', error);
+      alert('Error al guardar. Ver consola para detalles.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [floresAgregadas, ingredientesAgregados, producto.Nombre, onClose]);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+        <h4 style={{ margin: '0 0 var(--spacing-md) 0' }}>Flores</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+          <select
+            value={floresReceta.flor}
+            onChange={e => setFloresReceta({ ...floresReceta, flor: e.target.value })}
+            className="form-field__select"
+            style={{ width: '100%' }}
+          >
+            <option value="">— Selecciona flor —</option>
+            {flores.map(f => (
+              <option key={f.id} value={f.id}>
+                {f.Nombre}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="1"
+            value={floresReceta.cantidad}
+            onChange={e => setFloresReceta({ ...floresReceta, cantidad: parseInt(e.target.value) || 1 })}
+            className="input"
+            style={{ width: '80px' }}
+            placeholder="Cant."
+          />
+          <button className="btn btn--primary btn--sm" onClick={handleAgregarFlor}>
+            + Agregar
+          </button>
+        </div>
+
+        {floresAgregadas.length > 0 && (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Flor</th>
+                  <th>Cantidad</th>
+                  <th>Merma</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {floresAgregadas.map(f => (
+                  <tr key={f.id}>
+                    <td>{f.Nombre}</td>
+                    <td>{f.cantidadReceta}</td>
+                    <td>30%</td>
+                    <td>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleEliminarFlor(f.id)}
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+        <h4 style={{ margin: '0 0 var(--spacing-md) 0' }}>Ingredientes</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+          <select
+            value={ingredientesReceta.ingrediente}
+            onChange={e => setIngredientesReceta({ ...ingredientesReceta, ingrediente: e.target.value })}
+            className="form-field__select"
+            style={{ width: '100%' }}
+          >
+            <option value="">— Selecciona ingrediente —</option>
+            {ingredientes.map(i => (
+              <option key={i.id} value={i.id}>
+                {i.Nombre}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="1"
+            value={ingredientesReceta.cantidad}
+            onChange={e => setIngredientesReceta({ ...ingredientesReceta, cantidad: parseInt(e.target.value) || 1 })}
+            className="input"
+            style={{ width: '80px' }}
+            placeholder="Cant."
+          />
+          <button className="btn btn--primary btn--sm" onClick={handleAgregarIngrediente}>
+            + Agregar
+          </button>
+        </div>
+
+        {ingredientesAgregados.length > 0 && (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Ingrediente</th>
+                  <th>Cantidad</th>
+                  <th>Merma</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {ingredientesAgregados.map(i => (
+                  <tr key={i.id}>
+                    <td>{i.Nombre}</td>
+                    <td>{i.cantidadReceta}</td>
+                    <td>30%</td>
+                    <td>
+                      <button
+                        className="table-action-btn delete"
+                        onClick={() => handleEliminarIngrediente(i.id)}
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="dialog-actions">
+        <button className="btn btn--secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="btn btn--primary" onClick={handleGuardar} disabled={isSaving}>
+          {isSaving ? 'Guardando...' : 'Guardar Receta'}
+        </button>
+      </div>
     </div>
   );
 }
