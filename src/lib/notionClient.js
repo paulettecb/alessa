@@ -1,19 +1,57 @@
+// En local, el proxy de Vite (vite.config.js) reenvía /notion-api a
+// api.notion.com; en Netlify lo hace la función netlify/functions/notion.mjs,
+// que agrega el token guardado en el servidor. La API de Notion no acepta
+// llamadas directas desde el navegador (CORS), por eso el puente.
 const NOTION_TOKEN = import.meta.env.VITE_NOTION_TOKEN;
-// Pasa por el proxy del dev server (vite.config.js) porque la API de Notion
-// no acepta llamadas directas desde el navegador (CORS).
 const NOTION_API_URL = '/notion-api/v1';
 
-const headers = {
-  'Authorization': `Bearer ${NOTION_TOKEN}`,
-  'Notion-Version': '2022-06-28',
-  'Content-Type': 'application/json',
-};
+const PIN_KEY = 'alessa-pin';
+
+function buildHeaders() {
+  const headers = {
+    'Notion-Version': '2022-06-28',
+    'Content-Type': 'application/json',
+  };
+  // En local el token viaja desde .env.local; en Netlify no existe
+  // (lo pone la función del servidor) y este header simplemente se omite.
+  if (NOTION_TOKEN) {
+    headers['Authorization'] = `Bearer ${NOTION_TOKEN}`;
+  }
+  const pin = localStorage.getItem(PIN_KEY);
+  if (pin) {
+    headers['x-alessa-pin'] = pin;
+  }
+  return headers;
+}
+
+// fetch con headers de Notion + manejo del PIN del sitio (si el puente de
+// Netlify tiene ALESSA_PIN configurado, lo pide una vez y lo recuerda).
+export async function notionFetch(path, options = {}) {
+  const response = await fetch(`${NOTION_API_URL}${path}`, {
+    ...options,
+    headers: { ...buildHeaders(), ...(options.headers || {}) },
+  });
+
+  if (response.status === 401) {
+    const data = await response.clone().json().catch(() => ({}));
+    if (data.code === 'need_pin') {
+      const pin = window.prompt('Escribe el PIN de Alessa:');
+      if (pin && pin.trim()) {
+        localStorage.setItem(PIN_KEY, pin.trim());
+        return notionFetch(path, options);
+      }
+      localStorage.removeItem(PIN_KEY);
+      throw new Error('PIN requerido');
+    }
+  }
+
+  return response;
+}
 
 export async function fetchDatabase(databaseId) {
   try {
-    const response = await fetch(`${NOTION_API_URL}/databases/${databaseId}/query`, {
+    const response = await notionFetch(`/databases/${databaseId}/query`, {
       method: 'POST',
-      headers,
       body: JSON.stringify({
         page_size: 100,
       }),
@@ -33,9 +71,8 @@ export async function fetchDatabase(databaseId) {
 
 export async function createPage(databaseId, properties) {
   try {
-    const response = await fetch(`${NOTION_API_URL}/pages`, {
+    const response = await notionFetch('/pages', {
       method: 'POST',
-      headers,
       body: JSON.stringify({
         parent: { database_id: databaseId },
         properties,
@@ -55,9 +92,8 @@ export async function createPage(databaseId, properties) {
 
 export async function updatePage(pageId, properties) {
   try {
-    const response = await fetch(`${NOTION_API_URL}/pages/${pageId}`, {
+    const response = await notionFetch(`/pages/${pageId}`, {
       method: 'PATCH',
-      headers,
       body: JSON.stringify({ properties }),
     });
 
@@ -114,15 +150,18 @@ function extractPropertyValue(prop) {
   }
 }
 
+// IDs de las bases en la página "Velas & Ramos" de Notion. No son secretos
+// (sin el token no sirven), así que van como valores por defecto y .env.local
+// solo puede sobreescribirlos si algún día cambian.
 export const DATABASES = {
-  FLORES: import.meta.env.VITE_NOTION_DB_FLORES,
-  INGREDIENTES: import.meta.env.VITE_NOTION_DB_INGREDIENTES,
-  TAMAÑOS: import.meta.env.VITE_NOTION_DB_TAMAÑOS,
-  VARIANTES_FLORES: import.meta.env.VITE_NOTION_DB_VARIANTES_FLORES,
-  SUBTIPOS_INGREDIENTES: import.meta.env.VITE_NOTION_DB_SUBTIPOS_INGREDIENTES,
-  PRODUCTOS: import.meta.env.VITE_NOTION_DB_PRODUCTOS,
-  RECETAS_FLORES: import.meta.env.VITE_NOTION_DB_RECETAS_FLORES,
-  RECETAS_INGREDIENTES: import.meta.env.VITE_NOTION_DB_RECETAS_INGREDIENTES,
-  COMPRAS: import.meta.env.VITE_NOTION_DB_COMPRAS,
-  AJUSTES: import.meta.env.VITE_NOTION_DB_AJUSTES,
+  FLORES: import.meta.env.VITE_NOTION_DB_FLORES || '36e4bb06-2d1b-4b94-891a-ae79ad802828',
+  INGREDIENTES: import.meta.env.VITE_NOTION_DB_INGREDIENTES || 'b5ff8b54-cf24-4f0a-af22-528b0a06845f',
+  TAMAÑOS: import.meta.env.VITE_NOTION_DB_TAMAÑOS || 'c6559f63-6d89-4597-8662-801f0d50af1c',
+  VARIANTES_FLORES: import.meta.env.VITE_NOTION_DB_VARIANTES_FLORES || '95eeaf05-caef-489b-b6e9-ea77d5256966',
+  SUBTIPOS_INGREDIENTES: import.meta.env.VITE_NOTION_DB_SUBTIPOS_INGREDIENTES || 'c5c2b64f-368e-4974-8ab3-b835cc8b0619',
+  PRODUCTOS: import.meta.env.VITE_NOTION_DB_PRODUCTOS || 'b238adfa-a5cf-4591-a9e8-d9383f3df54b',
+  RECETAS_FLORES: import.meta.env.VITE_NOTION_DB_RECETAS_FLORES || 'f12ad21c-efb3-4abc-8b6b-e4acdd7d8688',
+  RECETAS_INGREDIENTES: import.meta.env.VITE_NOTION_DB_RECETAS_INGREDIENTES || 'f7035dee-4fdc-4b38-9386-999e6a093bee',
+  COMPRAS: import.meta.env.VITE_NOTION_DB_COMPRAS || '6e432355-8582-4bff-9f87-4e495d2dcff6',
+  AJUSTES: import.meta.env.VITE_NOTION_DB_AJUSTES || '96eaffeb-8d2d-46dc-9bfb-e8d9ccd27464',
 };

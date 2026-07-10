@@ -6,7 +6,7 @@ import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { Greeting } from './components/Greeting';
 import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes } from './lib/useNotion';
-import { createPage, updatePage, DATABASES } from './lib/notionClient';
+import { createPage, updatePage, notionFetch, DATABASES } from './lib/notionClient';
 import './App.css';
 
 function App() {
@@ -923,24 +923,14 @@ function PantallaRecetas() {
     // Fetch recetas desde Notion
     (async () => {
       try {
-        const flores = await fetch(`/notion-api/v1/databases/${DATABASES.RECETAS_FLORES}/query`, {
+        const flores = await notionFetch(`/databases/${DATABASES.RECETAS_FLORES}/query`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({ page_size: 100 }),
         }).then(r => r.json());
         setRecetasFlores(flores.results || []);
 
-        const ingredientes = await fetch(`/notion-api/v1/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
+        const ingredientes = await notionFetch(`/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({ page_size: 100 }),
         }).then(r => r.json());
         setRecetasIngredientes(ingredientes.results || []);
@@ -1416,13 +1406,8 @@ function PantallaAjustes() {
     setIsSaving(true);
     try {
       // Obtener los IDs existentes de Notion para actualizar
-      const response = await fetch(`/notion-api/v1/databases/${DATABASES.AJUSTES}/query`, {
+      const response = await notionFetch(`/databases/${DATABASES.AJUSTES}/query`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ page_size: 100 }),
       }).then(r => r.json());
 
