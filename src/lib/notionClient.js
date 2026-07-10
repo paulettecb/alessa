@@ -1,5 +1,7 @@
 const NOTION_TOKEN = import.meta.env.VITE_NOTION_TOKEN;
-const NOTION_API_URL = 'https://api.notion.com/v1';
+// Pasa por el proxy del dev server (vite.config.js) porque la API de Notion
+// no acepta llamadas directas desde el navegador (CORS).
+const NOTION_API_URL = '/notion-api/v1';
 
 const headers = {
   'Authorization': `Bearer ${NOTION_TOKEN}`,

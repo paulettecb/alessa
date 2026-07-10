@@ -923,7 +923,7 @@ function PantallaRecetas() {
     // Fetch recetas desde Notion
     (async () => {
       try {
-        const flores = await fetch(`https://api.notion.com/v1/databases/${DATABASES.RECETAS_FLORES}/query`, {
+        const flores = await fetch(`/notion-api/v1/databases/${DATABASES.RECETAS_FLORES}/query`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
@@ -934,7 +934,7 @@ function PantallaRecetas() {
         }).then(r => r.json());
         setRecetasFlores(flores.results || []);
 
-        const ingredientes = await fetch(`https://api.notion.com/v1/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
+        const ingredientes = await fetch(`/notion-api/v1/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
@@ -1416,7 +1416,7 @@ function PantallaAjustes() {
     setIsSaving(true);
     try {
       // Obtener los IDs existentes de Notion para actualizar
-      const response = await fetch(`https://api.notion.com/v1/databases/${DATABASES.AJUSTES}/query`, {
+      const response = await fetch(`/notion-api/v1/databases/${DATABASES.AJUSTES}/query`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
