@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2 } from 'lucide-react';
+import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2, DollarSign, Printer } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
@@ -20,6 +20,7 @@ function App() {
     { id: 'productos', label: 'Productos', icon: Package },
     { id: 'compras', label: 'Compras', icon: ShoppingCart },
     { id: 'recetas', label: 'Recetas', icon: Flame },
+    { id: 'lista-precios', label: 'Lista de Precios', icon: DollarSign },
     { id: 'ajustes', label: 'Ajustes', icon: Settings },
   ];
 
@@ -66,6 +67,7 @@ function App() {
         {activeTab === 'productos' && <PantallaProductos />}
         {activeTab === 'compras' && <PantallaCompras />}
         {activeTab === 'recetas' && <PantallaRecetas />}
+        {activeTab === 'lista-precios' && <PantallaListaPrecios />}
         {activeTab === 'ajustes' && <PantallaAjustes />}
       </main>
     </div>
@@ -1246,6 +1248,143 @@ function RecetaFormulario({ producto, flores, ingredientes, onClose }) {
           {isSaving ? 'Guardando...' : 'Guardar Receta'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function PantallaListaPrecios() {
+  const { productos, loading } = useProductos();
+  const { ajustes } = useAjustes();
+  const moneda = ajustes['Moneda'] || '$';
+  const productosActivos = productos.filter(p => p.Activo);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Lista de Precios</h2>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando precios...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="screen">
+      <div className="screen__header">
+        <h2>Lista de Precios</h2>
+        <Button onClick={handlePrint}>
+          <Printer size={18} style={{ marginRight: 'var(--spacing-sm)' }} />
+          Imprimir
+        </Button>
+      </div>
+
+      {productosActivos.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay productos activos. Crea productos en la pantalla de Productos.</p>
+        </Card>
+      ) : (
+        <>
+          <div className="lista-precios-container" style={{ backgroundColor: 'white', padding: 'var(--spacing-2xl)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', marginBottom: 'var(--spacing-2xl)' }}>
+            {/* Header de documento */}
+            <div style={{ textAlign: 'center', marginBottom: 'var(--spacing-2xl)', paddingBottom: 'var(--spacing-xl)', borderBottom: '2px solid var(--accent-primary)' }}>
+              <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-display)', color: 'var(--accent-primary)' }}>
+                {ajustes['Nombre del negocio'] || 'Alessa - Velas que Florecen'}
+              </h1>
+              <p style={{ margin: 'var(--spacing-sm) 0 0 0', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                Lista de Precios
+              </p>
+            </div>
+
+            {/* Tabla de precios */}
+            <div className="table-container" style={{ backgroundColor: 'transparent', border: 'none' }}>
+              <table className="table" style={{ width: '100%' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--accent-primary)' }}>
+                    <th style={{ textAlign: 'left', paddingBottom: 'var(--spacing-lg)' }}>Producto</th>
+                    <th style={{ textAlign: 'left', paddingBottom: 'var(--spacing-lg)' }}>Descripción</th>
+                    <th style={{ textAlign: 'right', paddingBottom: 'var(--spacing-lg)' }}>Precio Base</th>
+                    <th style={{ textAlign: 'right', paddingBottom: 'var(--spacing-lg)' }}>Precio Venta</th>
+                    {productosActivos.some(p => p['Descuento por volumen'] > 0) && (
+                      <th style={{ textAlign: 'center', paddingBottom: 'var(--spacing-lg)' }}>Desc. Vol.</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {productosActivos.map((prod, idx) => (
+                    <tr key={prod.id} style={{ borderBottom: '1px solid var(--border-subtle)', backgroundColor: idx % 2 === 0 ? 'transparent' : 'var(--bg-sunken)' }}>
+                      <td style={{ paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', fontWeight: 500 }}>
+                        {prod.Nombre}
+                      </td>
+                      <td style={{ paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                        {prod.Descripción}
+                      </td>
+                      <td style={{ textAlign: 'right', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)' }}>
+                        —
+                      </td>
+                      <td style={{ textAlign: 'right', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                        {moneda}{prod['Precio de venta']?.toFixed(2) || '0.00'}
+                      </td>
+                      {productosActivos.some(p => p['Descuento por volumen'] > 0) && (
+                        <td style={{ textAlign: 'center', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)' }}>
+                          {prod['Descuento por volumen'] > 0 ? `-${prod['Descuento por volumen']}%` : '—'}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div style={{ marginTop: 'var(--spacing-2xl)', paddingTop: 'var(--spacing-xl)', borderTop: '1px solid var(--border-subtle)', color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)', textAlign: 'center' }}>
+              <p style={{ margin: 0 }}>
+                Generado {new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' })} • Sujeto a cambios
+              </p>
+            </div>
+          </div>
+
+          {/* Notas de impresión */}
+          <Card>
+            <h3>Notas para Imprimir</h3>
+            <ul style={{ marginTop: 'var(--spacing-md)', fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              <li>Usa "Imprimir" para enviar a PDF o impresora</li>
+              <li>La lista se formatea automáticamente para una página A4</li>
+              <li>Los colores se ajustan para impresión en blanco y negro</li>
+            </ul>
+          </Card>
+        </>
+      )}
+
+      <style>{`
+        @media print {
+          .sidebar,
+          .screen__header,
+          .dialog-actions,
+          main > div:last-child,
+          .btn,
+          button {
+            display: none !important;
+          }
+          .screen {
+            padding: 0 !important;
+          }
+          .lista-precios-container {
+            box-shadow: none !important;
+            page-break-inside: avoid;
+          }
+          body {
+            margin: 0;
+            padding: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }
