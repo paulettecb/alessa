@@ -24,11 +24,16 @@ export function FormField({
           className="form-field__select"
         >
           <option value="">— Selecciona —</option>
-          {options.map(opt => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
+          {options.map(opt => {
+            // acepta 'texto' o { value, label }
+            const val = typeof opt === 'object' && opt !== null ? opt.value : opt;
+            const lab = typeof opt === 'object' && opt !== null ? opt.label : opt;
+            return (
+              <option key={val} value={val}>
+                {lab}
+              </option>
+            );
+          })}
         </select>
         {error && <p className="form-field__error">{error}</p>}
       </div>

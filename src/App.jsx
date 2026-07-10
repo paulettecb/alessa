@@ -1,20 +1,41 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2, DollarSign, Printer, TrendingUp } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { saludoDelDia } from './components/Greeting';
-import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
+import { useFlores, useIngredientes, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
 import { createPage, updatePage, archivePage, notionFetch, fetchDatabase, DATABASES } from './lib/notionClient';
-import { calcularReceta, calcularMargen, formatoMoneda } from './lib/costos';
+import { calcularReceta, calcularMargen, formatoMoneda, sincronizarCostos } from './lib/costos';
 import './App.css';
 
 const esMovil = () => window.innerWidth <= 768;
 
+// Ajustes compartidos por toda la app (moneda, merma, alertas...): se cargan
+// una sola vez en App y las pantallas los leen del contexto.
+const AjustesContext = createContext({ ajustes: {}, loading: true, recargar: () => {} });
+
+function useAjustesGlobal() {
+  const { ajustes, loading, recargar } = useContext(AjustesContext);
+  const num = (valor, porDefecto) => {
+    const n = parseFloat(valor);
+    return Number.isFinite(n) ? n : porDefecto;
+  };
+  return {
+    ajustes,
+    loading,
+    recargar,
+    moneda: ajustes['Moneda'] || '$',
+    mermaDefault: num(ajustes['Merma %'], 30),
+    alertaExistencias: num(ajustes['Alerta de existencias'], 5),
+  };
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('inicio');
   const [sidebarOpen, setSidebarOpen] = useState(() => !esMovil());
+  const ajustesGlobal = useAjustes();
 
   const handleNav = (id) => {
     setActiveTab(id);
@@ -33,6 +54,7 @@ function App() {
   ];
 
   return (
+    <AjustesContext.Provider value={ajustesGlobal}>
     <div className="app">
       {/* Barra superior (solo móvil) */}
       <header className="mobile-topbar">
@@ -90,6 +112,7 @@ function App() {
         {activeTab === 'ajustes' && <PantallaAjustes />}
       </main>
     </div>
+    </AjustesContext.Provider>
   );
 }
 
@@ -97,9 +120,16 @@ function PantallaInicio() {
   const { productos } = useProductos();
   const { flores } = useFlores();
   const { ingredientes } = useIngredientes();
+  const { alertaExistencias } = useAjustesGlobal();
 
   const activos = productos.filter(p => p.Activo);
   const floresActivas = flores.filter(f => f.Activa).length;
+
+  // Artículos con existencias registradas que ya están en el umbral de alerta
+  const porAcabarse = [
+    ...flores.filter(f => f.Activa !== false),
+    ...ingredientes.filter(i => i.Activo !== false),
+  ].filter(a => a.Existencias !== null && a.Existencias <= alertaExistencias);
 
   // Margen promedio de los productos que ya tienen costo y precio
   const conCosto = activos.filter(p => (p['Costo total'] || 0) > 0 && (p['Precio de venta'] || 0) > 0);
@@ -144,6 +174,12 @@ function PantallaInicio() {
 
       <Card className="mt-xl">
         <h3>Próximas Acciones</h3>
+        {porAcabarse.length > 0 && (
+          <p className="text-secondary mt-md">
+            🧺 Se está acabando: <strong>{porAcabarse.map(a => `${a.Nombre} (${a.Existencias})`).join(', ')}</strong>.
+            Al registrar la compra de reposición, las existencias se suman solas.
+          </p>
+        )}
         {margenPromedio === null ? (
           <p className="text-secondary mt-md">
             🌸 Para ver tus márgenes: ponle <strong>costo unitario</strong> a tus flores e ingredientes,
@@ -166,14 +202,15 @@ function PantallaInicio() {
 
 function PantallaFlores() {
   const { flores, loading, error, recargar } = useFlores();
+  const { moneda } = useAjustesGlobal();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFlor, setEditingFlor] = useState(null);
-  const [formData, setFormData] = useState({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
+  const [formData, setFormData] = useState({ Nombre: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activa: true });
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const resetForm = useCallback(() => {
-    setFormData({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
+    setFormData({ Nombre: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activa: true });
     setEditingFlor(null);
   }, []);
 
@@ -184,6 +221,7 @@ function PantallaFlores() {
         Nombre: flor.Nombre || '',
         Descripción: flor.Descripción || '',
         'Costo unitario': flor['Costo unitario'] || 0,
+        Existencias: flor.Existencias ?? '',
         Activa: flor.Activa !== false,
       });
     } else {
@@ -205,16 +243,22 @@ function PantallaFlores() {
 
     setIsSaving(true);
     try {
+      const costoNuevo = parseFloat(formData['Costo unitario']) || 0;
       const props = {
         Nombre: { title: [{ text: { content: formData.Nombre } }] },
         Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-        'Costo unitario': { number: parseFloat(formData['Costo unitario']) || 0 },
+        'Costo unitario': { number: costoNuevo },
+        Existencias: { number: formData.Existencias === '' ? null : parseFloat(formData.Existencias) || 0 },
         Activa: { checkbox: formData.Activa },
       };
       if (editingFlor) {
         await updatePage(editingFlor.id, props);
       } else {
         await createPage(DATABASES.FLORES, props);
+      }
+      // Si cambió el costo, los productos que usan esta flor quedan viejos
+      if (editingFlor && (editingFlor['Costo unitario'] || 0) !== costoNuevo) {
+        await sincronizarCostos();
       }
       await recargar();
       handleCloseDialog();
@@ -237,6 +281,7 @@ function PantallaFlores() {
         : '';
       if (!window.confirm(`¿Borrar "${flor.Nombre}"? Se puede recuperar desde la papelera de Notion.${aviso}`)) return;
       await archivePage(flor.id);
+      if (usos > 0) await sincronizarCostos();
       await recargar();
     } catch (error) {
       console.error('Error borrando flor:', error);
@@ -281,6 +326,7 @@ function PantallaFlores() {
                 <th>Nombre</th>
                 <th>Descripción</th>
                 <th>Costo Unitario</th>
+                <th>Existencias</th>
                 <th>Estado</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
@@ -291,7 +337,10 @@ function PantallaFlores() {
                   <td>{flor.Nombre}</td>
                   <td>{flor.Descripción}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>
-                    {flor['Costo unitario'] ? formatoMoneda(flor['Costo unitario']) : <span className="text-tertiary">sin costo</span>}
+                    {flor['Costo unitario'] ? formatoMoneda(flor['Costo unitario'], moneda) : <span className="text-tertiary">sin costo</span>}
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {flor.Existencias !== null ? flor.Existencias : <span className="text-tertiary">—</span>}
                   </td>
                   <td>{flor.Activa ? '✓ Activa' : '✗ Inactiva'}</td>
                   <td>
@@ -336,11 +385,18 @@ function PantallaFlores() {
           placeholder="Descripción de la flor..."
         />
         <FormField
-          label="Costo Unitario ($ por unidad)"
+          label={`Costo Unitario (${moneda} por unidad)`}
           type="number"
           value={formData['Costo unitario']}
           onChange={val => setFormData({ ...formData, 'Costo unitario': val })}
           placeholder="ej: 15.50"
+        />
+        <FormField
+          label="Existencias (déjalo vacío si no las llevas)"
+          type="number"
+          value={formData.Existencias}
+          onChange={val => setFormData({ ...formData, Existencias: val })}
+          placeholder="ej: 50"
         />
         <FormField
           label="Activa"
@@ -364,16 +420,17 @@ function PantallaFlores() {
 
 function PantallaIngredientes() {
   const { ingredientes, loading, error, recargar } = useIngredientes();
+  const { moneda } = useAjustesGlobal();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIng, setEditingIng] = useState(null);
-  const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Activo: true });
+  const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activo: true });
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const tiposIngredientes = ['Cera', 'Oasis', 'Molde', 'Maceta', 'Herramienta', 'Otro'];
 
   const resetForm = useCallback(() => {
-    setFormData({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Activo: true });
+    setFormData({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Existencias: '', Activo: true });
     setEditingIng(null);
   }, []);
 
@@ -385,6 +442,7 @@ function PantallaIngredientes() {
         Tipo: ing.Tipo || '',
         Descripción: ing.Descripción || '',
         'Costo unitario': ing['Costo unitario'] || 0,
+        Existencias: ing.Existencias ?? '',
         Activo: ing.Activo !== false,
       });
     } else {
@@ -406,17 +464,23 @@ function PantallaIngredientes() {
 
     setIsSaving(true);
     try {
+      const costoNuevo = parseFloat(formData['Costo unitario']) || 0;
       const props = {
         Nombre: { title: [{ text: { content: formData.Nombre } }] },
         Tipo: { select: { name: formData.Tipo } },
         Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-        'Costo unitario': { number: parseFloat(formData['Costo unitario']) || 0 },
+        'Costo unitario': { number: costoNuevo },
+        Existencias: { number: formData.Existencias === '' ? null : parseFloat(formData.Existencias) || 0 },
         Activo: { checkbox: formData.Activo },
       };
       if (editingIng) {
         await updatePage(editingIng.id, props);
       } else {
         await createPage(DATABASES.INGREDIENTES, props);
+      }
+      // Si cambió el costo, los productos que usan este ingrediente quedan viejos
+      if (editingIng && (editingIng['Costo unitario'] || 0) !== costoNuevo) {
+        await sincronizarCostos();
       }
       await recargar();
       handleCloseDialog();
@@ -439,6 +503,7 @@ function PantallaIngredientes() {
         : '';
       if (!window.confirm(`¿Borrar "${ing.Nombre}"? Se puede recuperar desde la papelera de Notion.${aviso}`)) return;
       await archivePage(ing.id);
+      if (usos > 0) await sincronizarCostos();
       await recargar();
     } catch (error) {
       console.error('Error borrando ingrediente:', error);
@@ -483,6 +548,7 @@ function PantallaIngredientes() {
                 <th>Tipo</th>
                 <th>Descripción</th>
                 <th>Costo Unitario</th>
+                <th>Existencias</th>
                 <th>Estado</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
@@ -494,7 +560,10 @@ function PantallaIngredientes() {
                   <td>{ing.Tipo}</td>
                   <td>{ing.Descripción}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>
-                    {ing['Costo unitario'] ? formatoMoneda(ing['Costo unitario']) : <span className="text-tertiary">sin costo</span>}
+                    {ing['Costo unitario'] ? formatoMoneda(ing['Costo unitario'], moneda) : <span className="text-tertiary">sin costo</span>}
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {ing.Existencias !== null ? ing.Existencias : <span className="text-tertiary">—</span>}
                   </td>
                   <td>{ing.Activo ? '✓ Activo' : '✗ Inactivo'}</td>
                   <td>
@@ -547,11 +616,18 @@ function PantallaIngredientes() {
           placeholder="Descripción del ingrediente..."
         />
         <FormField
-          label="Costo Unitario ($ por unidad/gramo/ml)"
+          label={`Costo Unitario (${moneda} por unidad/gramo/ml)`}
           type="number"
           value={formData['Costo unitario']}
           onChange={val => setFormData({ ...formData, 'Costo unitario': val })}
           placeholder="ej: 8.00"
+        />
+        <FormField
+          label="Existencias (déjalo vacío si no las llevas)"
+          type="number"
+          value={formData.Existencias}
+          onChange={val => setFormData({ ...formData, Existencias: val })}
+          placeholder="ej: 20"
         />
         <FormField
           label="Activo"
@@ -575,14 +651,13 @@ function PantallaIngredientes() {
 
 function PantallaProductos() {
   const { productos, loading, error, recargar } = useProductos();
-  const { tamaños } = useTamaños();
+  const { moneda } = useAjustesGlobal();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProd, setEditingProd] = useState(null);
   const [formData, setFormData] = useState({
     Nombre: '',
     SKU: '',
     Descripción: '',
-    Tamaño: '',
     'Precio de venta': 0,
     'Descuento por volumen': 0,
     Activo: true,
@@ -595,7 +670,6 @@ function PantallaProductos() {
       Nombre: '',
       SKU: '',
       Descripción: '',
-      Tamaño: '',
       'Precio de venta': 0,
       'Descuento por volumen': 0,
       Activo: true,
@@ -610,7 +684,6 @@ function PantallaProductos() {
         Nombre: prod.Nombre || '',
         SKU: prod.SKU || '',
         Descripción: prod.Descripción || '',
-        Tamaño: prod.Tamaño || '',
         'Precio de venta': prod['Precio de venta'] || 0,
         'Descuento por volumen': prod['Descuento por volumen'] || 0,
         Activo: prod.Activo !== false,
@@ -641,14 +714,21 @@ function PantallaProductos() {
     setIsSaving(true);
     try {
       if (editingProd) {
-        await updatePage(editingProd.id, {
+        const precio = parseFloat(formData['Precio de venta']) || 0;
+        const props = {
           Nombre: { title: [{ text: { content: formData.Nombre } }] },
           SKU: { rich_text: [{ text: { content: formData.SKU } }] },
           Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          'Precio de venta': { number: parseFloat(formData['Precio de venta']) || 0 },
+          'Precio de venta': { number: precio },
           'Descuento por volumen': { number: parseFloat(formData['Descuento por volumen']) || 0 },
           Activo: { checkbox: formData.Activo },
-        });
+        };
+        // El margen guardado depende del precio: recalcularlo si ya hay costo
+        if ((editingProd['Costo total'] || 0) > 0) {
+          const margen = calcularMargen(precio, editingProd['Costo total']);
+          props['Margen real'] = { number: margen !== null ? Math.round(margen * 10) / 10 : 0 };
+        }
+        await updatePage(editingProd.id, props);
       } else {
         await createPage(DATABASES.PRODUCTOS, {
           Nombre: { title: [{ text: { content: formData.Nombre } }] },
@@ -744,9 +824,9 @@ function PantallaProductos() {
                 <tr key={prod.id}>
                   <td>{prod.Nombre}</td>
                   <td>{prod.SKU}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>${prod['Precio de venta']?.toFixed(2) || '0.00'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>{formatoMoneda(prod['Precio de venta'], moneda)}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>
-                    {costo > 0 ? formatoMoneda(costo) : <span className="text-tertiary">sin receta</span>}
+                    {costo > 0 ? formatoMoneda(costo, moneda) : <span className="text-tertiary">sin receta</span>}
                   </td>
                   <td>
                     {costo > 0 && margen !== null ? <MargenChip margen={margen} /> : '—'}
@@ -781,10 +861,10 @@ function PantallaProductos() {
 
       <Dialog isOpen={isDialogOpen} onClose={handleCloseDialog} title={editingProd ? 'Editar Producto' : 'Nuevo Producto'}>
         <FormField
-          label="Nombre"
+          label="Nombre (un producto por tamaño)"
           value={formData.Nombre}
           onChange={val => setFormData({ ...formData, Nombre: val })}
-          placeholder="ej: Ramo Rosa Mediano..."
+          placeholder="ej: Ramo Rosa Chico, Ramo Rosa Grande..."
           required
         />
         <FormField
@@ -837,12 +917,16 @@ function PantallaProductos() {
 
 function PantallaCompras() {
   const { compras, loading, error, recargar } = useCompras();
+  const { flores, recargar: recargarFlores } = useFlores();
+  const { ingredientes, recargar: recargarIngredientes } = useIngredientes();
+  const { moneda } = useAjustesGlobal();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCompra, setEditingCompra] = useState(null);
   const [formData, setFormData] = useState({
     Fecha: new Date().toISOString().split('T')[0],
     Proveedor: '',
     Tipo: '',
+    Articulo: '',
     Descripción: '',
     Cantidad: 0,
     'Precio unitario': 0,
@@ -854,11 +938,22 @@ function PantallaCompras() {
 
   const tiposCompras = ['Flor', 'Ingrediente'];
 
+  // Catálogo según el tipo elegido, para vincular la compra
+  const catalogo = formData.Tipo === 'Flor' ? flores : formData.Tipo === 'Ingrediente' ? ingredientes : [];
+  const articuloDe = useCallback((compra) => {
+    const idFlor = compra.Flor?.[0];
+    const idIng = compra.Ingrediente?.[0];
+    if (idFlor) return flores.find(f => f.id === idFlor) || null;
+    if (idIng) return ingredientes.find(i => i.id === idIng) || null;
+    return null;
+  }, [flores, ingredientes]);
+
   const resetForm = useCallback(() => {
     setFormData({
       Fecha: new Date().toISOString().split('T')[0],
       Proveedor: '',
       Tipo: '',
+      Articulo: '',
       Descripción: '',
       Cantidad: 0,
       'Precio unitario': 0,
@@ -875,6 +970,7 @@ function PantallaCompras() {
         Fecha: compra.Fecha || new Date().toISOString().split('T')[0],
         Proveedor: compra.Proveedor || '',
         Tipo: compra.Tipo || '',
+        Articulo: compra.Flor?.[0] || compra.Ingrediente?.[0] || '',
         Descripción: compra.Descripción || '',
         Cantidad: compra.Cantidad || 0,
         'Precio unitario': compra['Precio unitario'] || 0,
@@ -907,30 +1003,47 @@ function PantallaCompras() {
     setIsSaving(true);
     try {
       const total = parseFloat(calcularTotal());
+      const props = {
+        Name: { title: [{ text: { content: formData.Fecha } }] },
+        Fecha: { date: { start: formData.Fecha } },
+        Proveedor: { rich_text: [{ text: { content: formData.Proveedor } }] },
+        Tipo: { select: { name: formData.Tipo } },
+        Flor: { relation: formData.Tipo === 'Flor' && formData.Articulo ? [{ id: formData.Articulo }] : [] },
+        Ingrediente: { relation: formData.Tipo === 'Ingrediente' && formData.Articulo ? [{ id: formData.Articulo }] : [] },
+        Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+        Cantidad: { number: parseFloat(formData.Cantidad) || 0 },
+        'Precio unitario': { number: parseFloat(formData['Precio unitario']) || 0 },
+        Total: { number: total },
+        Notas: { rich_text: [{ text: { content: formData.Notas } }] },
+      };
       if (editingCompra) {
-        await updatePage(editingCompra.id, {
-          Name: { title: [{ text: { content: formData.Fecha } }] },
-          Fecha: { date: { start: formData.Fecha } },
-          Proveedor: { rich_text: [{ text: { content: formData.Proveedor } }] },
-          Tipo: { select: { name: formData.Tipo } },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Cantidad: { number: parseFloat(formData.Cantidad) || 0 },
-          'Precio unitario': { number: parseFloat(formData['Precio unitario']) || 0 },
-          Total: { number: total },
-          Notas: { rich_text: [{ text: { content: formData.Notas } }] },
-        });
+        await updatePage(editingCompra.id, props);
       } else {
-        await createPage(DATABASES.COMPRAS, {
-          Name: { title: [{ text: { content: formData.Fecha } }] },
-          Fecha: { date: { start: formData.Fecha } },
-          Proveedor: { rich_text: [{ text: { content: formData.Proveedor } }] },
-          Tipo: { select: { name: formData.Tipo } },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Cantidad: { number: parseFloat(formData.Cantidad) || 0 },
-          'Precio unitario': { number: parseFloat(formData['Precio unitario']) || 0 },
-          Total: { number: total },
-          Notas: { rich_text: [{ text: { content: formData.Notas } }] },
-        });
+        await createPage(DATABASES.COMPRAS, props);
+        // Compra nueva vinculada al catálogo: sumar existencias y, si el
+        // costo subió, ofrecer actualizarlo (bajadas no se tocan)
+        const articulo = catalogo.find(a => a.id === formData.Articulo);
+        if (articulo) {
+          const cantidad = parseFloat(formData.Cantidad) || 0;
+          const precioUnitario = parseFloat(formData['Precio unitario']) || 0;
+          const cambios = {};
+          if (articulo.Existencias !== null && cantidad > 0) {
+            cambios.Existencias = { number: articulo.Existencias + cantidad };
+          }
+          const costoActual = articulo['Costo unitario'] || 0;
+          let costoSubio = false;
+          if (precioUnitario > costoActual) {
+            costoSubio = window.confirm(
+              `El costo de "${articulo.Nombre}" subió: ${formatoMoneda(costoActual, moneda)} → ${formatoMoneda(precioUnitario, moneda)}.\n\n¿Actualizar su costo unitario y recalcular el costo de tus productos?`
+            );
+            if (costoSubio) cambios['Costo unitario'] = { number: precioUnitario };
+          }
+          if (Object.keys(cambios).length > 0) {
+            await updatePage(articulo.id, cambios);
+            if (costoSubio) await sincronizarCostos();
+            await (formData.Tipo === 'Flor' ? recargarFlores() : recargarIngredientes());
+          }
+        }
       }
       await recargar();
       handleCloseDialog();
@@ -940,7 +1053,7 @@ function PantallaCompras() {
     } finally {
       setIsSaving(false);
     }
-  }, [formData, editingCompra, handleCloseDialog, recargar]);
+  }, [formData, editingCompra, catalogo, moneda, handleCloseDialog, recargar, recargarFlores, recargarIngredientes]);
 
   const handleDelete = useCallback(async (compra) => {
     const etiqueta = compra.Descripción ? `${compra.Fecha} — ${compra.Descripción}` : compra.Fecha;
@@ -990,7 +1103,7 @@ function PantallaCompras() {
               <tr>
                 <th>Fecha</th>
                 <th>Proveedor</th>
-                <th>Tipo</th>
+                <th>Artículo</th>
                 <th>Descripción</th>
                 <th>Cantidad</th>
                 <th>Total</th>
@@ -1002,10 +1115,12 @@ function PantallaCompras() {
                 <tr key={compra.id}>
                   <td>{compra.Fecha}</td>
                   <td>{compra.Proveedor}</td>
-                  <td>{compra.Tipo}</td>
+                  <td>
+                    {articuloDe(compra)?.Nombre || <span className="text-tertiary">{compra.Tipo || '—'}</span>}
+                  </td>
                   <td>{compra.Descripción}</td>
                   <td>{compra.Cantidad}</td>
-                  <td>${compra.Total?.toFixed(2) || '0.00'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>{formatoMoneda(compra.Total, moneda)}</td>
                   <td>
                     <div className="table-actions">
                       <button
@@ -1051,9 +1166,18 @@ function PantallaCompras() {
           label="Tipo"
           type="select"
           value={formData.Tipo}
-          onChange={val => setFormData({ ...formData, Tipo: val })}
+          onChange={val => setFormData({ ...formData, Tipo: val, Articulo: '' })}
           options={tiposCompras}
         />
+        {formData.Tipo && (
+          <FormField
+            label={`¿Qué ${formData.Tipo === 'Flor' ? 'flor' : 'ingrediente'} compraste? (vincula para sumar existencias)`}
+            type="select"
+            value={formData.Articulo}
+            onChange={val => setFormData({ ...formData, Articulo: val })}
+            options={catalogo.map(a => ({ value: a.id, label: a.Nombre }))}
+          />
+        )}
         <FormField
           label="Descripción"
           type="textarea"
@@ -1082,7 +1206,7 @@ function PantallaCompras() {
         <div style={{ padding: 'var(--spacing-lg)', backgroundColor: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--spacing-lg)' }}>
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
             Total: <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-lg)', color: 'var(--accent-primary)' }}>
-              ${calcularTotal()}
+              {moneda}{calcularTotal()}
             </strong>
           </p>
         </div>
@@ -1117,6 +1241,7 @@ function PantallaRecetas() {
   const { flores } = useFlores();
   const { ingredientes } = useIngredientes();
   const { recetasFlores, recetasIngredientes, loading: recLoading, recargar: recargarRecetas } = useRecetas();
+  const { moneda } = useAjustesGlobal();
   const [selectedProd, setSelectedProd] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -1194,7 +1319,7 @@ function PantallaRecetas() {
                       <span className="receta-dato__label">{items.length === 1 ? 'item' : 'items'}</span>
                     </div>
                     <div className="receta-dato">
-                      <span className="receta-dato__valor">{costoTotal > 0 ? formatoMoneda(costoTotal) : '—'}</span>
+                      <span className="receta-dato__valor">{costoTotal > 0 ? formatoMoneda(costoTotal, moneda) : '—'}</span>
                       <span className="receta-dato__label">costo</span>
                     </div>
                     <div className="receta-dato">
@@ -1244,10 +1369,21 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
   const [nuevoIng, setNuevoIng] = useState({ id: '', cantidad: 1 });
   const [trabajando, setTrabajando] = useState(false);
 
-  const MERMA_DEFAULT = 30; // % de merma estándar
+  const { moneda, mermaDefault } = useAjustesGlobal();
 
   const { items, costoTotal } = calcularReceta(producto, itemsFlores, itemsIngredientes, flores, ingredientes);
   const margen = calcularMargen(producto['Precio de venta'], costoTotal);
+
+  // Guarda en el producto el costo y margen que resultan de estos items:
+  // cada cambio de receta persiste solo, sin botón de "guardar costo"
+  const persistirCosto = async (nuevosFlores, nuevosIngredientes) => {
+    const { costoTotal: nuevoCosto } = calcularReceta(producto, nuevosFlores, nuevosIngredientes, flores, ingredientes);
+    const nuevoMargen = calcularMargen(producto['Precio de venta'], nuevoCosto);
+    await updatePage(producto.id, {
+      'Costo total': { number: Math.round(nuevoCosto * 100) / 100 },
+      'Margen real': { number: nuevoMargen !== null ? Math.round(nuevoMargen * 10) / 10 : 0 },
+    });
+  };
 
   const agregarFlor = async () => {
     if (!nuevaFlor.id || trabajando) return;
@@ -1258,17 +1394,19 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         Flor: { relation: [{ id: nuevaFlor.id }] },
         Cantidad: { number: nuevaFlor.cantidad },
         Unidad: { select: { name: 'Unidades' } },
-        'Merma %': { number: MERMA_DEFAULT },
+        'Merma %': { number: mermaDefault },
       });
-      setItemsFlores([...itemsFlores, {
+      const nuevos = [...itemsFlores, {
         id: page.id,
         Producto: producto.Nombre,
         Flor: [nuevaFlor.id],
         Cantidad: nuevaFlor.cantidad,
         Unidad: 'Unidades',
-        'Merma %': MERMA_DEFAULT,
-      }]);
+        'Merma %': mermaDefault,
+      }];
+      setItemsFlores(nuevos);
       setNuevaFlor({ id: '', cantidad: 1 });
+      await persistirCosto(nuevos, itemsIngredientes);
       onCambio();
     } catch (error) {
       console.error('Error agregando flor:', error);
@@ -1287,17 +1425,19 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         Ingrediente: { relation: [{ id: nuevoIng.id }] },
         Cantidad: { number: nuevoIng.cantidad },
         Unidad: { select: { name: 'Unidades' } },
-        'Merma %': { number: MERMA_DEFAULT },
+        'Merma %': { number: mermaDefault },
       });
-      setItemsIngredientes([...itemsIngredientes, {
+      const nuevos = [...itemsIngredientes, {
         id: page.id,
         Producto: producto.Nombre,
         Ingrediente: [nuevoIng.id],
         Cantidad: nuevoIng.cantidad,
         Unidad: 'Unidades',
-        'Merma %': MERMA_DEFAULT,
-      }]);
+        'Merma %': mermaDefault,
+      }];
+      setItemsIngredientes(nuevos);
       setNuevoIng({ id: '', cantidad: 1 });
+      await persistirCosto(itemsFlores, nuevos);
       onCambio();
     } catch (error) {
       console.error('Error agregando ingrediente:', error);
@@ -1311,31 +1451,17 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
     if (trabajando) return;
     setTrabajando(true);
     try {
+      const nuevosFlores = itemsFlores.filter(r => r.id !== item.recetaId);
+      const nuevosIngredientes = itemsIngredientes.filter(r => r.id !== item.recetaId);
       await archivePage(item.recetaId);
-      setItemsFlores(prev => prev.filter(r => r.id !== item.recetaId));
-      setItemsIngredientes(prev => prev.filter(r => r.id !== item.recetaId));
+      setItemsFlores(nuevosFlores);
+      setItemsIngredientes(nuevosIngredientes);
+      await persistirCosto(nuevosFlores, nuevosIngredientes);
       onCambio();
     } catch (error) {
       console.error('Error eliminando item:', error);
       alert('Error al eliminar: ' + error.message);
     } finally {
-      setTrabajando(false);
-    }
-  };
-
-  const guardarYCerrar = async () => {
-    setTrabajando(true);
-    try {
-      // Persistir el costo calculado (y margen) en el producto
-      await updatePage(producto.id, {
-        'Costo total': { number: Math.round(costoTotal * 100) / 100 },
-        'Margen real': { number: margen !== null ? Math.round(margen * 10) / 10 : 0 },
-      });
-      onCambio();
-      onClose();
-    } catch (error) {
-      console.error('Error guardando costo:', error);
-      alert('Error al guardar el costo: ' + error.message);
       setTrabajando(false);
     }
   };
@@ -1348,11 +1474,11 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
       <div className="receta-resumen">
         <div className="receta-resumen__dato">
           <span className="receta-resumen__label">Costo (con merma)</span>
-          <span className="receta-resumen__valor">{formatoMoneda(costoTotal)}</span>
+          <span className="receta-resumen__valor">{formatoMoneda(costoTotal, moneda)}</span>
         </div>
         <div className="receta-resumen__dato">
           <span className="receta-resumen__label">Precio de venta</span>
-          <span className="receta-resumen__valor">{formatoMoneda(producto['Precio de venta'])}</span>
+          <span className="receta-resumen__valor">{formatoMoneda(producto['Precio de venta'], moneda)}</span>
         </div>
         <div className="receta-resumen__dato">
           <span className="receta-resumen__label">Margen</span>
@@ -1379,7 +1505,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
             <option value="">— Selecciona flor —</option>
             {flores.filter(f => f.Activa !== false).map(f => (
               <option key={f.id} value={f.id}>
-                {f.Nombre}{f['Costo unitario'] ? ` (${formatoMoneda(f['Costo unitario'])})` : ' (sin costo)'}
+                {f.Nombre}{f['Costo unitario'] ? ` (${formatoMoneda(f['Costo unitario'], moneda)})` : ' (sin costo)'}
               </option>
             ))}
           </select>
@@ -1409,7 +1535,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
             <option value="">— Selecciona ingrediente —</option>
             {ingredientes.filter(i => i.Activo !== false).map(i => (
               <option key={i.id} value={i.id}>
-                {i.Nombre}{i['Costo unitario'] ? ` (${formatoMoneda(i['Costo unitario'])})` : ' (sin costo)'}
+                {i.Nombre}{i['Costo unitario'] ? ` (${formatoMoneda(i['Costo unitario'], moneda)})` : ' (sin costo)'}
               </option>
             ))}
           </select>
@@ -1447,10 +1573,10 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
                   <td>{it.tipo === 'flor' ? '🌸' : '🕯️'} {it.nombre}</td>
                   <td>{it.cantidad}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>
-                    {it.costoUnitario ? formatoMoneda(it.costoUnitario) : <span className="text-tertiary">—</span>}
+                    {it.costoUnitario ? formatoMoneda(it.costoUnitario, moneda) : <span className="text-tertiary">—</span>}
                   </td>
                   <td>{it.mermaPct}%</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatoMoneda(it.costo)}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatoMoneda(it.costo, moneda)}</td>
                   <td>
                     <button
                       className="table-action-btn delete"
@@ -1468,12 +1594,12 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
         </div>
       )}
 
-      <div className="dialog-actions">
-        <button className="btn btn--secondary btn--md" onClick={() => onClose()} disabled={trabajando}>
-          Cerrar
-        </button>
-        <button className="btn btn--primary btn--md" onClick={guardarYCerrar} disabled={trabajando}>
-          {trabajando ? 'Guardando...' : 'Guardar costo en el producto'}
+      <div className="dialog-actions" style={{ alignItems: 'center' }}>
+        <span className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginRight: 'auto' }}>
+          {trabajando ? 'Guardando…' : 'Los cambios se guardan solos 🌸'}
+        </span>
+        <button className="btn btn--primary btn--md" onClick={() => onClose()} disabled={trabajando}>
+          Listo
         </button>
       </div>
     </div>
@@ -1482,8 +1608,7 @@ function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recet
 
 function PantallaListaPrecios() {
   const { productos, loading } = useProductos();
-  const { ajustes } = useAjustes();
-  const moneda = ajustes['Moneda'] || '$';
+  const { ajustes, moneda } = useAjustesGlobal();
   const productosActivos = productos.filter(p => p.Activo);
 
   const handlePrint = () => {
@@ -1614,11 +1739,12 @@ function PantallaListaPrecios() {
 }
 
 function PantallaAjustes() {
-  const { ajustes, loading, recargar } = useAjustes();
+  const { ajustes, loading, recargar } = useAjustesGlobal();
   const [formData, setFormData] = useState({
     'Merma %': 30,
     'Moneda': '$',
     'Margen estándar %': 50,
+    'Alerta de existencias': 5,
     'Nombre del negocio': 'Alessa - Velas que Florecen',
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -1631,6 +1757,7 @@ function PantallaAjustes() {
         'Merma %': parseFloat(ajustes['Merma %']) || 30,
         'Moneda': ajustes['Moneda'] || '$',
         'Margen estándar %': parseFloat(ajustes['Margen estándar %']) || 50,
+        'Alerta de existencias': parseFloat(ajustes['Alerta de existencias']) || 5,
         'Nombre del negocio': ajustes['Nombre del negocio'] || 'Alessa - Velas que Florecen',
       });
     }
@@ -1722,6 +1849,13 @@ function PantallaAjustes() {
           </Card>
 
           <Card>
+            <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Alerta de existencias</p>
+            <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 'var(--spacing-md)' }}>
+              ≤ {formData['Alerta de existencias']}
+            </div>
+          </Card>
+
+          <Card>
             <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Nombre del negocio</p>
             <p style={{ margin: 'var(--spacing-md) 0 0 0', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', lineHeight: 1.4 }}>
               {formData['Nombre del negocio']}
@@ -1757,6 +1891,13 @@ function PantallaAjustes() {
             onChange={val => setFormData({ ...formData, 'Margen estándar %': parseFloat(val) || 0 })}
             placeholder="ej: 50"
           />
+          <FormField
+            label="Alerta de existencias (avisar cuando queden estas o menos)"
+            type="number"
+            value={formData['Alerta de existencias']}
+            onChange={val => setFormData({ ...formData, 'Alerta de existencias': parseFloat(val) || 0 })}
+            placeholder="ej: 5"
+          />
 
           <div className="dialog-actions">
             <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>
@@ -1778,8 +1919,11 @@ function PantallaAjustes() {
           <p style={{ marginBottom: 'var(--spacing-md)' }}>
             <strong>Margen estándar:</strong> Porcentaje de ganancia que aplica por defecto a los productos.
           </p>
-          <p>
+          <p style={{ marginBottom: 'var(--spacing-md)' }}>
             <strong>Moneda:</strong> Símbolo usado para mostrar precios en la aplicación.
+          </p>
+          <p>
+            <strong>Alerta de existencias:</strong> El Inicio avisa cuando a una flor o ingrediente le quedan estas unidades o menos.
           </p>
         </div>
       </Card>

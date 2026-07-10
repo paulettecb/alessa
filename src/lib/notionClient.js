@@ -164,7 +164,9 @@ function extractPropertyValue(prop) {
     case 'multi_select':
       return prop.multi_select?.map(s => s.name) || [];
     case 'number':
-      return prop.number || 0;
+      // null (sin valor) se conserva para distinguirlo de un 0 real,
+      // p.ej. existencias sin registrar vs. existencias agotadas
+      return prop.number ?? null;
     case 'date':
       return prop.date?.start || '';
     case 'relation':

@@ -37,11 +37,6 @@ export function useIngredientes() {
   return { ingredientes, loading, error, recargar };
 }
 
-export function useTamaños() {
-  const { data: tamaños, loading, error, recargar } = useDatabase(DATABASES.TAMAÑOS);
-  return { tamaños, loading, error, recargar };
-}
-
 export function useProductos() {
   const { data: productos, loading, error, recargar } = useDatabase(DATABASES.PRODUCTOS);
   return { productos, loading, error, recargar };

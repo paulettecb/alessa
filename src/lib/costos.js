@@ -1,6 +1,8 @@
 // Motor de costos de Alessa: costo real de cada producto según su receta,
 // aplicando la merma de cada item, y el margen contra el precio de venta.
 
+import { fetchDatabase, updatePage, DATABASES } from './notionClient';
+
 // Devuelve los items de la receta de un producto con su costo calculado.
 // Cada item: cantidad × costo unitario × (1 + merma%).
 export function calcularReceta(producto, recetasFlores, recetasIngredientes, flores, ingredientes) {
@@ -47,4 +49,33 @@ export function calcularMargen(precioVenta, costo) {
 
 export function formatoMoneda(valor, simbolo = '$') {
   return `${simbolo}${(valor || 0).toFixed(2)}`;
+}
+
+// Recalcula "Costo total" y "Margen real" de todos los productos con receta y
+// guarda en Notion los que quedaron viejos (p.ej. porque cambió el costo de
+// una flor). Devuelve los nombres de los productos actualizados.
+export async function sincronizarCostos() {
+  const [productos, recetasFlores, recetasIngredientes, flores, ingredientes] = await Promise.all([
+    fetchDatabase(DATABASES.PRODUCTOS),
+    fetchDatabase(DATABASES.RECETAS_FLORES),
+    fetchDatabase(DATABASES.RECETAS_INGREDIENTES),
+    fetchDatabase(DATABASES.FLORES),
+    fetchDatabase(DATABASES.INGREDIENTES),
+  ]);
+
+  const actualizados = [];
+  for (const producto of productos) {
+    const { items, costoTotal } = calcularReceta(producto, recetasFlores, recetasIngredientes, flores, ingredientes);
+    if (items.length === 0) continue; // sin receta no hay nada que sincronizar
+    const costo = Math.round(costoTotal * 100) / 100;
+    const margen = calcularMargen(producto['Precio de venta'], costo);
+    const margenGuardado = margen !== null ? Math.round(margen * 10) / 10 : 0;
+    if (producto['Costo total'] === costo && producto['Margen real'] === margenGuardado) continue;
+    await updatePage(producto.id, {
+      'Costo total': { number: costo },
+      'Margen real': { number: margenGuardado },
+    });
+    actualizados.push(producto.Nombre);
+  }
+  return actualizados;
 }
