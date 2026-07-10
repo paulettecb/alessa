@@ -106,6 +106,32 @@ export function useCompras() {
   return { compras, loading, error };
 }
 
+export function useRecetas() {
+  const [recetasFlores, setRecetasFlores] = useState([]);
+  const [recetasIngredientes, setRecetasIngredientes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [rf, ri] = await Promise.all([
+          fetchDatabase(DATABASES.RECETAS_FLORES),
+          fetchDatabase(DATABASES.RECETAS_INGREDIENTES),
+        ]);
+        setRecetasFlores(rf);
+        setRecetasIngredientes(ri);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return { recetasFlores, recetasIngredientes, loading, error };
+}
+
 export function useAjustes() {
   const [ajustes, setAjustes] = useState({});
   const [loading, setLoading] = useState(true);

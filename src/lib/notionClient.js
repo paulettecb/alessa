@@ -97,6 +97,20 @@ export async function createPage(databaseId, properties) {
   }
 }
 
+// Archiva la página en Notion (borrado suave: recuperable desde la papelera).
+export async function archivePage(pageId) {
+  const response = await notionFetch(`/pages/${pageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived: true }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Notion API error: ${await notionErrorMessage(response)}`);
+  }
+
+  return await response.json();
+}
+
 export async function updatePage(pageId, properties) {
   try {
     const response = await notionFetch(`/pages/${pageId}`, {

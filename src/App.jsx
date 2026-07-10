@@ -1,17 +1,25 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2, DollarSign, Printer } from 'lucide-react';
+import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2, DollarSign, Printer, TrendingUp } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { Greeting } from './components/Greeting';
-import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes } from './lib/useNotion';
-import { createPage, updatePage, notionFetch, DATABASES } from './lib/notionClient';
+import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes, useRecetas } from './lib/useNotion';
+import { createPage, updatePage, archivePage, notionFetch, DATABASES } from './lib/notionClient';
+import { calcularReceta, calcularMargen, formatoMoneda } from './lib/costos';
 import './App.css';
+
+const esMovil = () => window.innerWidth <= 768;
 
 function App() {
   const [activeTab, setActiveTab] = useState('inicio');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => !esMovil());
+
+  const handleNav = (id) => {
+    setActiveTab(id);
+    if (esMovil()) setSidebarOpen(false);
+  };
 
   const menuItems = [
     { id: 'inicio', label: 'Inicio', icon: BarChart3 },
@@ -26,6 +34,18 @@ function App() {
 
   return (
     <div className="app">
+      {/* Barra superior (solo móvil) */}
+      <header className="mobile-topbar">
+        <button className="topbar-menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menú">
+          <Menu size={22} />
+        </button>
+        <span className="topbar-title">Alessa</span>
+        <span className="topbar-flor">🌸</span>
+      </header>
+
+      {/* Fondo oscuro al abrir el menú en móvil */}
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="sidebar__header">
@@ -45,7 +65,7 @@ function App() {
               <button
                 key={item.id}
                 className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => handleNav(item.id)}
               >
                 <Icon size={20} />
                 <span>{item.label}</span>
@@ -79,8 +99,16 @@ function PantallaInicio() {
   const { flores } = useFlores();
   const { ingredientes } = useIngredientes();
 
-  const productosActivos = productos.filter(p => p.Activo).length;
+  const activos = productos.filter(p => p.Activo);
   const floresActivas = flores.filter(f => f.Activa).length;
+
+  // Margen promedio de los productos que ya tienen costo y precio
+  const conCosto = activos.filter(p => (p['Costo total'] || 0) > 0 && (p['Precio de venta'] || 0) > 0);
+  const margenPromedio = conCosto.length
+    ? conCosto.reduce((s, p) => s + calcularMargen(p['Precio de venta'], p['Costo total']), 0) / conCosto.length
+    : null;
+
+  const sinCosto = activos.length - conCosto.length;
 
   return (
     <div className="screen">
@@ -92,33 +120,57 @@ function PantallaInicio() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-lg">
+      <div className="grid stats-grid gap-lg">
         <Card className="stat-card">
-          <div className="stat-value">{productosActivos}</div>
+          <div className="stat-icon" style={{ backgroundColor: 'var(--terracotta-100)', color: 'var(--terracotta-600)' }}>
+            <Package size={22} />
+          </div>
+          <div className="stat-value">{activos.length}</div>
           <div className="stat-label">Productos Activos</div>
         </Card>
 
         <Card className="stat-card">
+          <div className="stat-icon" style={{ backgroundColor: 'var(--sage-100)', color: 'var(--sage-600)' }}>
+            <Flower size={22} />
+          </div>
           <div className="stat-value">{floresActivas}</div>
           <div className="stat-label">Flores en Catálogo</div>
         </Card>
 
         <Card className="stat-card">
+          <div className="stat-icon" style={{ backgroundColor: 'var(--success-100)', color: 'var(--success-600)' }}>
+            <Leaf size={22} />
+          </div>
           <div className="stat-value">{ingredientes.length}</div>
           <div className="stat-label">Ingredientes</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-value">-</div>
+          <div className="stat-icon" style={{ backgroundColor: 'var(--gold-200)', color: 'var(--gold-600)' }}>
+            <TrendingUp size={22} />
+          </div>
+          <div className="stat-value">{margenPromedio !== null ? `${margenPromedio.toFixed(0)}%` : '—'}</div>
           <div className="stat-label">Margen Promedio</div>
         </Card>
       </div>
 
       <Card className="mt-xl">
         <h3>Próximas Acciones</h3>
-        <p className="text-secondary mt-md">
-          ✅ Conexión con Notion activa. Los datos se sincronizan automáticamente.
-        </p>
+        {margenPromedio === null ? (
+          <p className="text-secondary mt-md">
+            🌸 Para ver tus márgenes: ponle <strong>costo unitario</strong> a tus flores e ingredientes,
+            arma las <strong>recetas</strong> de cada producto, y el costo se calcula solo.
+          </p>
+        ) : sinCosto > 0 ? (
+          <p className="text-secondary mt-md">
+            📋 {sinCosto} {sinCosto === 1 ? 'producto activo aún no tiene' : 'productos activos aún no tienen'} receta con costo.
+            Ármalas en la pantalla de Recetas para completar tus márgenes.
+          </p>
+        ) : (
+          <p className="text-secondary mt-md">
+            ✅ Todos tus productos tienen costo calculado. Los datos se sincronizan con Notion automáticamente.
+          </p>
+        )}
       </Card>
     </div>
   );
@@ -128,11 +180,11 @@ function PantallaFlores() {
   const { flores, loading } = useFlores();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFlor, setEditingFlor] = useState(null);
-  const [formData, setFormData] = useState({ Nombre: '', Descripción: '', Activa: true });
+  const [formData, setFormData] = useState({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
   const [isSaving, setIsSaving] = useState(false);
 
   const resetForm = useCallback(() => {
-    setFormData({ Nombre: '', Descripción: '', Activa: true });
+    setFormData({ Nombre: '', Descripción: '', 'Costo unitario': 0, Activa: true });
     setEditingFlor(null);
   }, []);
 
@@ -142,6 +194,7 @@ function PantallaFlores() {
       setFormData({
         Nombre: flor.Nombre || '',
         Descripción: flor.Descripción || '',
+        'Costo unitario': flor['Costo unitario'] || 0,
         Activa: flor.Activa !== false,
       });
     } else {
@@ -163,20 +216,16 @@ function PantallaFlores() {
 
     setIsSaving(true);
     try {
+      const props = {
+        Nombre: { title: [{ text: { content: formData.Nombre } }] },
+        Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+        'Costo unitario': { number: parseFloat(formData['Costo unitario']) || 0 },
+        Activa: { checkbox: formData.Activa },
+      };
       if (editingFlor) {
-        // Editar
-        await updatePage(editingFlor.id, {
-          Nombre: { title: [{ text: { content: formData.Nombre } }] },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Activa: { checkbox: formData.Activa },
-        });
+        await updatePage(editingFlor.id, props);
       } else {
-        // Crear
-        await createPage(DATABASES.FLORES, {
-          Nombre: { title: [{ text: { content: formData.Nombre } }] },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Activa: { checkbox: formData.Activa },
-        });
+        await createPage(DATABASES.FLORES, props);
       }
       handleCloseDialog();
       // Forzar recarga (idealmente usaríamos SWR o similar)
@@ -221,6 +270,7 @@ function PantallaFlores() {
               <tr>
                 <th>Nombre</th>
                 <th>Descripción</th>
+                <th>Costo Unitario</th>
                 <th>Estado</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
@@ -230,6 +280,9 @@ function PantallaFlores() {
                 <tr key={flor.id}>
                   <td>{flor.Nombre}</td>
                   <td>{flor.Descripción}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {flor['Costo unitario'] ? formatoMoneda(flor['Costo unitario']) : <span className="text-tertiary">sin costo</span>}
+                  </td>
                   <td>{flor.Activa ? '✓ Activa' : '✗ Inactiva'}</td>
                   <td>
                     <div className="table-actions">
@@ -265,6 +318,13 @@ function PantallaFlores() {
           placeholder="Descripción de la flor..."
         />
         <FormField
+          label="Costo Unitario ($ por unidad)"
+          type="number"
+          value={formData['Costo unitario']}
+          onChange={val => setFormData({ ...formData, 'Costo unitario': val })}
+          placeholder="ej: 15.50"
+        />
+        <FormField
           label="Activa"
           type="checkbox"
           value={formData.Activa}
@@ -288,13 +348,13 @@ function PantallaIngredientes() {
   const { ingredientes, loading } = useIngredientes();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingIng, setEditingIng] = useState(null);
-  const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', Activo: true });
+  const [formData, setFormData] = useState({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Activo: true });
   const [isSaving, setIsSaving] = useState(false);
 
   const tiposIngredientes = ['Cera', 'Oasis', 'Molde', 'Maceta', 'Herramienta', 'Otro'];
 
   const resetForm = useCallback(() => {
-    setFormData({ Nombre: '', Tipo: '', Descripción: '', Activo: true });
+    setFormData({ Nombre: '', Tipo: '', Descripción: '', 'Costo unitario': 0, Activo: true });
     setEditingIng(null);
   }, []);
 
@@ -305,6 +365,7 @@ function PantallaIngredientes() {
         Nombre: ing.Nombre || '',
         Tipo: ing.Tipo || '',
         Descripción: ing.Descripción || '',
+        'Costo unitario': ing['Costo unitario'] || 0,
         Activo: ing.Activo !== false,
       });
     } else {
@@ -326,20 +387,17 @@ function PantallaIngredientes() {
 
     setIsSaving(true);
     try {
+      const props = {
+        Nombre: { title: [{ text: { content: formData.Nombre } }] },
+        Tipo: { select: { name: formData.Tipo } },
+        Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+        'Costo unitario': { number: parseFloat(formData['Costo unitario']) || 0 },
+        Activo: { checkbox: formData.Activo },
+      };
       if (editingIng) {
-        await updatePage(editingIng.id, {
-          Nombre: { title: [{ text: { content: formData.Nombre } }] },
-          Tipo: { select: { name: formData.Tipo } },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Activo: { checkbox: formData.Activo },
-        });
+        await updatePage(editingIng.id, props);
       } else {
-        await createPage(DATABASES.INGREDIENTES, {
-          Nombre: { title: [{ text: { content: formData.Nombre } }] },
-          Tipo: { select: { name: formData.Tipo } },
-          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
-          Activo: { checkbox: formData.Activo },
-        });
+        await createPage(DATABASES.INGREDIENTES, props);
       }
       handleCloseDialog();
       window.location.reload();
@@ -383,6 +441,7 @@ function PantallaIngredientes() {
                 <th>Nombre</th>
                 <th>Tipo</th>
                 <th>Descripción</th>
+                <th>Costo Unitario</th>
                 <th>Estado</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
@@ -393,6 +452,9 @@ function PantallaIngredientes() {
                   <td>{ing.Nombre}</td>
                   <td>{ing.Tipo}</td>
                   <td>{ing.Descripción}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {ing['Costo unitario'] ? formatoMoneda(ing['Costo unitario']) : <span className="text-tertiary">sin costo</span>}
+                  </td>
                   <td>{ing.Activo ? '✓ Activo' : '✗ Inactivo'}</td>
                   <td>
                     <div className="table-actions">
@@ -434,6 +496,13 @@ function PantallaIngredientes() {
           value={formData.Descripción}
           onChange={val => setFormData({ ...formData, Descripción: val })}
           placeholder="Descripción del ingrediente..."
+        />
+        <FormField
+          label="Costo Unitario ($ por unidad/gramo/ml)"
+          type="number"
+          value={formData['Costo unitario']}
+          onChange={val => setFormData({ ...formData, 'Costo unitario': val })}
+          placeholder="ej: 8.00"
         />
         <FormField
           label="Activo"
@@ -576,18 +645,27 @@ function PantallaProductos() {
                 <th>Nombre</th>
                 <th>SKU</th>
                 <th>Precio de Venta</th>
-                <th>Descuento Vol.</th>
+                <th>Costo</th>
+                <th>Margen</th>
                 <th>Estado</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {productos.map(prod => (
+              {productos.map(prod => {
+                const costo = prod['Costo total'] || 0;
+                const margen = calcularMargen(prod['Precio de venta'], costo);
+                return (
                 <tr key={prod.id}>
                   <td>{prod.Nombre}</td>
                   <td>{prod.SKU}</td>
-                  <td>${prod['Precio de venta']?.toFixed(2) || '0.00'}</td>
-                  <td>{prod['Descuento por volumen']?.toFixed(0) || '0'}%</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>${prod['Precio de venta']?.toFixed(2) || '0.00'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {costo > 0 ? formatoMoneda(costo) : <span className="text-tertiary">sin receta</span>}
+                  </td>
+                  <td>
+                    {costo > 0 && margen !== null ? <MargenChip margen={margen} /> : '—'}
+                  </td>
                   <td>{prod.Activo ? '✓ Activo' : '✗ Inactivo'}</td>
                   <td>
                     <div className="table-actions">
@@ -601,7 +679,8 @@ function PantallaProductos() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -909,48 +988,31 @@ function PantallaCompras() {
   );
 }
 
+function MargenChip({ margen }) {
+  const nivel = margen >= 50 ? 'bueno' : margen >= 25 ? 'regular' : 'bajo';
+  return <span className={`chip chip--${nivel}`}>{margen.toFixed(0)}%</span>;
+}
+
 function PantallaRecetas() {
   const { productos, loading: prodLoading } = useProductos();
   const { flores } = useFlores();
   const { ingredientes } = useIngredientes();
-  const [recetasFlores, setRecetasFlores] = useState([]);
-  const [recetasIngredientes, setRecetasIngredientes] = useState([]);
+  const { recetasFlores, recetasIngredientes, loading: recLoading } = useRecetas();
   const [selectedProd, setSelectedProd] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  // Simular carga de recetas desde Notion
-  useEffect(() => {
-    // Fetch recetas desde Notion
-    (async () => {
-      try {
-        const flores = await notionFetch(`/databases/${DATABASES.RECETAS_FLORES}/query`, {
-          method: 'POST',
-          body: JSON.stringify({ page_size: 100 }),
-        }).then(r => r.json());
-        setRecetasFlores(flores.results || []);
-
-        const ingredientes = await notionFetch(`/databases/${DATABASES.RECETAS_INGREDIENTES}/query`, {
-          method: 'POST',
-          body: JSON.stringify({ page_size: 100 }),
-        }).then(r => r.json());
-        setRecetasIngredientes(ingredientes.results || []);
-      } catch (error) {
-        console.error('Error cargando recetas:', error);
-      }
-    })();
-  }, []);
 
   const handleOpenReceta = useCallback((prod) => {
     setSelectedProd(prod);
     setIsDialogOpen(true);
   }, []);
 
-  const handleCloseReceta = useCallback(() => {
+  const handleCloseReceta = useCallback((huboCambios) => {
     setIsDialogOpen(false);
     setTimeout(() => setSelectedProd(null), 300);
+    if (huboCambios) window.location.reload();
   }, []);
 
-  if (prodLoading) {
+  if (prodLoading || recLoading) {
     return (
       <div className="screen">
         <div className="screen__header">
@@ -966,7 +1028,10 @@ function PantallaRecetas() {
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Recetas de Productos</h2>
+        <div>
+          <h2>Recetas de Productos</h2>
+          <p className="subtitle">Toca un producto para armar su receta. El costo se calcula con la merma incluida.</p>
+        </div>
       </div>
 
       {productos.length === 0 ? (
@@ -974,29 +1039,32 @@ function PantallaRecetas() {
           <p className="text-tertiary">No hay productos. Crea uno primero en la pantalla de Productos.</p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-lg">
+        <div className="recetas-lista">
           {productos.map(prod => {
-            const floresReceta = recetasFlores.filter(r => r.properties?.['Producto']?.title?.[0]?.plain_text === prod.Nombre);
-            const ingReceta = recetasIngredientes.filter(r => r.properties?.['Producto']?.title?.[0]?.plain_text === prod.Nombre);
-            const totalItems = floresReceta.length + ingReceta.length;
+            const { items, costoTotal } = calcularReceta(prod, recetasFlores, recetasIngredientes, flores, ingredientes);
+            const margen = calcularMargen(prod['Precio de venta'], costoTotal);
 
             return (
               <Card key={prod.id} className="receta-card" onClick={() => handleOpenReceta(prod)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div>
-                    <h3 style={{ margin: 0, marginBottom: 'var(--spacing-sm)', cursor: 'pointer' }}>
-                      {prod.Nombre}
-                    </h3>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
-                      {prod.Descripción}
-                    </p>
+                <div className="receta-card__fila">
+                  <div className="receta-card__info">
+                    <h3>{prod.Nombre}</h3>
+                    <p>{prod.Descripción}</p>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--accent-primary)' }}>
-                      {totalItems}
+                  <div className="receta-card__datos">
+                    <div className="receta-dato">
+                      <span className="receta-dato__valor">{items.length}</span>
+                      <span className="receta-dato__label">{items.length === 1 ? 'item' : 'items'}</span>
                     </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      {totalItems === 1 ? 'item' : 'items'}
+                    <div className="receta-dato">
+                      <span className="receta-dato__valor">{costoTotal > 0 ? formatoMoneda(costoTotal) : '—'}</span>
+                      <span className="receta-dato__label">costo</span>
+                    </div>
+                    <div className="receta-dato">
+                      <span className="receta-dato__valor">
+                        {costoTotal > 0 && margen !== null ? <MargenChip margen={margen} /> : '—'}
+                      </span>
+                      <span className="receta-dato__label">margen</span>
                     </div>
                   </div>
                 </div>
@@ -1008,7 +1076,7 @@ function PantallaRecetas() {
 
       <Dialog
         isOpen={isDialogOpen}
-        onClose={handleCloseReceta}
+        onClose={() => handleCloseReceta(false)}
         title={selectedProd ? `Receta: ${selectedProd.Nombre}` : 'Receta'}
       >
         {selectedProd && (
@@ -1016,6 +1084,8 @@ function PantallaRecetas() {
             producto={selectedProd}
             flores={flores}
             ingredientes={ingredientes}
+            recetasFlores={recetasFlores}
+            recetasIngredientes={recetasIngredientes}
             onClose={handleCloseReceta}
           />
         )}
@@ -1024,218 +1094,248 @@ function PantallaRecetas() {
   );
 }
 
-function RecetaFormulario({ producto, flores, ingredientes, onClose }) {
-  const [floresAgregadas, setFloresAgregadas] = useState([]);
-  const [ingredientesAgregados, setIngredientesAgregados] = useState([]);
-  const [floresReceta, setFloresReceta] = useState({ flor: '', cantidad: 1 });
-  const [ingredientesReceta, setIngredientesReceta] = useState({ ingrediente: '', cantidad: 1 });
-  const [isSaving, setIsSaving] = useState(false);
+function RecetaFormulario({ producto, flores, ingredientes, recetasFlores, recetasIngredientes, onClose }) {
+  // Items ya guardados en Notion para este producto (edición en vivo)
+  const [itemsFlores, setItemsFlores] = useState(() =>
+    recetasFlores.filter(r => r.Producto === producto.Nombre)
+  );
+  const [itemsIngredientes, setItemsIngredientes] = useState(() =>
+    recetasIngredientes.filter(r => r.Producto === producto.Nombre)
+  );
+  const [nuevaFlor, setNuevaFlor] = useState({ id: '', cantidad: 1 });
+  const [nuevoIng, setNuevoIng] = useState({ id: '', cantidad: 1 });
+  const [trabajando, setTrabajando] = useState(false);
+  const [huboCambios, setHuboCambios] = useState(false);
 
-  const MERMA = 0.30; // 30%
+  const MERMA_DEFAULT = 30; // % de merma estándar
 
-  const handleAgregarFlor = useCallback(() => {
-    if (!floresReceta.flor) return;
-    const flor = flores.find(f => f.id === floresReceta.flor);
-    if (flor) {
-      setFloresAgregadas([...floresAgregadas, { ...flor, cantidadReceta: floresReceta.cantidad }]);
-      setFloresReceta({ flor: '', cantidad: 1 });
-    }
-  }, [floresReceta, flores, floresAgregadas]);
+  const { items, costoTotal } = calcularReceta(producto, itemsFlores, itemsIngredientes, flores, ingredientes);
+  const margen = calcularMargen(producto['Precio de venta'], costoTotal);
 
-  const handleAgregarIngrediente = useCallback(() => {
-    if (!ingredientesReceta.ingrediente) return;
-    const ing = ingredientes.find(i => i.id === ingredientesReceta.ingrediente);
-    if (ing) {
-      setIngredientesAgregados([...ingredientesAgregados, { ...ing, cantidadReceta: ingredientesReceta.cantidad }]);
-      setIngredientesReceta({ ingrediente: '', cantidad: 1 });
-    }
-  }, [ingredientesReceta, ingredientes, ingredientesAgregados]);
-
-  const handleEliminarFlor = useCallback((id) => {
-    setFloresAgregadas(floresAgregadas.filter(f => f.id !== id));
-  }, [floresAgregadas]);
-
-  const handleEliminarIngrediente = useCallback((id) => {
-    setIngredientesAgregados(ingredientesAgregados.filter(i => i.id !== id));
-  }, [ingredientesAgregados]);
-
-  const handleGuardar = useCallback(async () => {
-    if (floresAgregadas.length === 0 && ingredientesAgregados.length === 0) {
-      alert('Agrega al menos un item a la receta');
-      return;
-    }
-
-    setIsSaving(true);
+  const agregarFlor = async () => {
+    if (!nuevaFlor.id || trabajando) return;
+    setTrabajando(true);
     try {
-      // Guardar flores de la receta
-      for (const flor of floresAgregadas) {
-        await createPage(DATABASES.RECETAS_FLORES, {
-          Producto: { title: [{ text: { content: producto.Nombre } }] },
-          Variante: { relation: [{ id: flor.id }] },
-          Cantidad: { number: flor.cantidadReceta },
-          Unidad: { select: { name: 'Unidades' } },
-          'Merma %': { number: MERMA * 100 },
-        });
-      }
-
-      // Guardar ingredientes de la receta
-      for (const ing of ingredientesAgregados) {
-        await createPage(DATABASES.RECETAS_INGREDIENTES, {
-          Producto: { title: [{ text: { content: producto.Nombre } }] },
-          Subtipo: { relation: [{ id: ing.id }] },
-          Cantidad: { number: ing.cantidadReceta },
-          Unidad: { select: { name: 'Unidades' } },
-          'Merma %': { number: MERMA * 100 },
-        });
-      }
-
-      alert('Receta guardada exitosamente!');
-      onClose();
-      window.location.reload();
+      const page = await createPage(DATABASES.RECETAS_FLORES, {
+        Producto: { title: [{ text: { content: producto.Nombre } }] },
+        Flor: { relation: [{ id: nuevaFlor.id }] },
+        Cantidad: { number: nuevaFlor.cantidad },
+        Unidad: { select: { name: 'Unidades' } },
+        'Merma %': { number: MERMA_DEFAULT },
+      });
+      setItemsFlores([...itemsFlores, {
+        id: page.id,
+        Producto: producto.Nombre,
+        Flor: [nuevaFlor.id],
+        Cantidad: nuevaFlor.cantidad,
+        Unidad: 'Unidades',
+        'Merma %': MERMA_DEFAULT,
+      }]);
+      setNuevaFlor({ id: '', cantidad: 1 });
+      setHuboCambios(true);
     } catch (error) {
-      console.error('Error guardando receta:', error);
-      alert('Error al guardar. Ver consola para detalles.');
+      console.error('Error agregando flor:', error);
+      alert('Error al agregar: ' + error.message);
     } finally {
-      setIsSaving(false);
+      setTrabajando(false);
     }
-  }, [floresAgregadas, ingredientesAgregados, producto.Nombre, onClose]);
+  };
+
+  const agregarIngrediente = async () => {
+    if (!nuevoIng.id || trabajando) return;
+    setTrabajando(true);
+    try {
+      const page = await createPage(DATABASES.RECETAS_INGREDIENTES, {
+        Producto: { title: [{ text: { content: producto.Nombre } }] },
+        Ingrediente: { relation: [{ id: nuevoIng.id }] },
+        Cantidad: { number: nuevoIng.cantidad },
+        Unidad: { select: { name: 'Unidades' } },
+        'Merma %': { number: MERMA_DEFAULT },
+      });
+      setItemsIngredientes([...itemsIngredientes, {
+        id: page.id,
+        Producto: producto.Nombre,
+        Ingrediente: [nuevoIng.id],
+        Cantidad: nuevoIng.cantidad,
+        Unidad: 'Unidades',
+        'Merma %': MERMA_DEFAULT,
+      }]);
+      setNuevoIng({ id: '', cantidad: 1 });
+      setHuboCambios(true);
+    } catch (error) {
+      console.error('Error agregando ingrediente:', error);
+      alert('Error al agregar: ' + error.message);
+    } finally {
+      setTrabajando(false);
+    }
+  };
+
+  const eliminarItem = async (item) => {
+    if (trabajando) return;
+    setTrabajando(true);
+    try {
+      await archivePage(item.recetaId);
+      setItemsFlores(prev => prev.filter(r => r.id !== item.recetaId));
+      setItemsIngredientes(prev => prev.filter(r => r.id !== item.recetaId));
+      setHuboCambios(true);
+    } catch (error) {
+      console.error('Error eliminando item:', error);
+      alert('Error al eliminar: ' + error.message);
+    } finally {
+      setTrabajando(false);
+    }
+  };
+
+  const guardarYCerrar = async () => {
+    setTrabajando(true);
+    try {
+      // Persistir el costo calculado (y margen) en el producto
+      await updatePage(producto.id, {
+        'Costo total': { number: Math.round(costoTotal * 100) / 100 },
+        'Margen real': { number: margen !== null ? Math.round(margen * 10) / 10 : 0 },
+      });
+      onClose(true);
+    } catch (error) {
+      console.error('Error guardando costo:', error);
+      alert('Error al guardar el costo: ' + error.message);
+      setTrabajando(false);
+    }
+  };
+
+  const sinCosto = items.some(it => it.sinCosto);
 
   return (
     <div>
-      <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h4 style={{ margin: '0 0 var(--spacing-md) 0' }}>Flores</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+      {/* Resumen de costo */}
+      <div className="receta-resumen">
+        <div className="receta-resumen__dato">
+          <span className="receta-resumen__label">Costo (con merma)</span>
+          <span className="receta-resumen__valor">{formatoMoneda(costoTotal)}</span>
+        </div>
+        <div className="receta-resumen__dato">
+          <span className="receta-resumen__label">Precio de venta</span>
+          <span className="receta-resumen__valor">{formatoMoneda(producto['Precio de venta'])}</span>
+        </div>
+        <div className="receta-resumen__dato">
+          <span className="receta-resumen__label">Margen</span>
+          <span className="receta-resumen__valor">
+            {costoTotal > 0 && margen !== null ? <MargenChip margen={margen} /> : '—'}
+          </span>
+        </div>
+      </div>
+      {sinCosto && (
+        <p className="receta-aviso">
+          ⚠️ Hay items sin costo unitario — ponles costo en Flores/Ingredientes para que el cálculo sea real.
+        </p>
+      )}
+
+      {/* Agregar flor */}
+      <div className="receta-seccion">
+        <h4>Flores</h4>
+        <div className="receta-agregar">
           <select
-            value={floresReceta.flor}
-            onChange={e => setFloresReceta({ ...floresReceta, flor: e.target.value })}
+            value={nuevaFlor.id}
+            onChange={e => setNuevaFlor({ ...nuevaFlor, id: e.target.value })}
             className="form-field__select"
-            style={{ width: '100%' }}
           >
             <option value="">— Selecciona flor —</option>
-            {flores.map(f => (
+            {flores.filter(f => f.Activa !== false).map(f => (
               <option key={f.id} value={f.id}>
-                {f.Nombre}
+                {f.Nombre}{f['Costo unitario'] ? ` (${formatoMoneda(f['Costo unitario'])})` : ' (sin costo)'}
               </option>
             ))}
           </select>
           <input
             type="number"
             min="1"
-            value={floresReceta.cantidad}
-            onChange={e => setFloresReceta({ ...floresReceta, cantidad: parseInt(e.target.value) || 1 })}
-            className="input"
-            style={{ width: '80px' }}
+            value={nuevaFlor.cantidad}
+            onChange={e => setNuevaFlor({ ...nuevaFlor, cantidad: parseInt(e.target.value) || 1 })}
+            className="receta-cantidad"
             placeholder="Cant."
           />
-          <button className="btn btn--primary btn--sm" onClick={handleAgregarFlor}>
+          <button className="btn btn--primary btn--sm" onClick={agregarFlor} disabled={trabajando || !nuevaFlor.id}>
             + Agregar
           </button>
         </div>
-
-        {floresAgregadas.length > 0 && (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Flor</th>
-                  <th>Cantidad</th>
-                  <th>Merma</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {floresAgregadas.map(f => (
-                  <tr key={f.id}>
-                    <td>{f.Nombre}</td>
-                    <td>{f.cantidadReceta}</td>
-                    <td>30%</td>
-                    <td>
-                      <button
-                        className="table-action-btn delete"
-                        onClick={() => handleEliminarFlor(f.id)}
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
-      <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h4 style={{ margin: '0 0 var(--spacing-md) 0' }}>Ingredientes</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+      {/* Agregar ingrediente */}
+      <div className="receta-seccion">
+        <h4>Ingredientes</h4>
+        <div className="receta-agregar">
           <select
-            value={ingredientesReceta.ingrediente}
-            onChange={e => setIngredientesReceta({ ...ingredientesReceta, ingrediente: e.target.value })}
+            value={nuevoIng.id}
+            onChange={e => setNuevoIng({ ...nuevoIng, id: e.target.value })}
             className="form-field__select"
-            style={{ width: '100%' }}
           >
             <option value="">— Selecciona ingrediente —</option>
-            {ingredientes.map(i => (
+            {ingredientes.filter(i => i.Activo !== false).map(i => (
               <option key={i.id} value={i.id}>
-                {i.Nombre}
+                {i.Nombre}{i['Costo unitario'] ? ` (${formatoMoneda(i['Costo unitario'])})` : ' (sin costo)'}
               </option>
             ))}
           </select>
           <input
             type="number"
             min="1"
-            value={ingredientesReceta.cantidad}
-            onChange={e => setIngredientesReceta({ ...ingredientesReceta, cantidad: parseInt(e.target.value) || 1 })}
-            className="input"
-            style={{ width: '80px' }}
+            value={nuevoIng.cantidad}
+            onChange={e => setNuevoIng({ ...nuevoIng, cantidad: parseInt(e.target.value) || 1 })}
+            className="receta-cantidad"
             placeholder="Cant."
           />
-          <button className="btn btn--primary btn--sm" onClick={handleAgregarIngrediente}>
+          <button className="btn btn--primary btn--sm" onClick={agregarIngrediente} disabled={trabajando || !nuevoIng.id}>
             + Agregar
           </button>
         </div>
-
-        {ingredientesAgregados.length > 0 && (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Ingrediente</th>
-                  <th>Cantidad</th>
-                  <th>Merma</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {ingredientesAgregados.map(i => (
-                  <tr key={i.id}>
-                    <td>{i.Nombre}</td>
-                    <td>{i.cantidadReceta}</td>
-                    <td>30%</td>
-                    <td>
-                      <button
-                        className="table-action-btn delete"
-                        onClick={() => handleEliminarIngrediente(i.id)}
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
+      {/* Items de la receta con costos */}
+      {items.length > 0 && (
+        <div className="table-container receta-tabla">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Cant.</th>
+                <th>Costo u.</th>
+                <th>Merma</th>
+                <th>Costo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.recetaId}>
+                  <td>{it.tipo === 'flor' ? '🌸' : '🕯️'} {it.nombre}</td>
+                  <td>{it.cantidad}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>
+                    {it.costoUnitario ? formatoMoneda(it.costoUnitario) : <span className="text-tertiary">—</span>}
+                  </td>
+                  <td>{it.mermaPct}%</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatoMoneda(it.costo)}</td>
+                  <td>
+                    <button
+                      className="table-action-btn delete"
+                      onClick={() => eliminarItem(it)}
+                      disabled={trabajando}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="dialog-actions">
-        <button className="btn btn--secondary" onClick={onClose}>
-          Cancelar
+        <button className="btn btn--secondary btn--md" onClick={() => onClose(huboCambios)} disabled={trabajando}>
+          Cerrar
         </button>
-        <button className="btn btn--primary" onClick={handleGuardar} disabled={isSaving}>
-          {isSaving ? 'Guardando...' : 'Guardar Receta'}
+        <button className="btn btn--primary btn--md" onClick={guardarYCerrar} disabled={trabajando}>
+          {trabajando ? 'Guardando...' : 'Guardar costo en el producto'}
         </button>
       </div>
     </div>
@@ -1299,8 +1399,7 @@ function PantallaListaPrecios() {
                   <tr style={{ borderBottom: '2px solid var(--accent-primary)' }}>
                     <th style={{ textAlign: 'left', paddingBottom: 'var(--spacing-lg)' }}>Producto</th>
                     <th style={{ textAlign: 'left', paddingBottom: 'var(--spacing-lg)' }}>Descripción</th>
-                    <th style={{ textAlign: 'right', paddingBottom: 'var(--spacing-lg)' }}>Precio Base</th>
-                    <th style={{ textAlign: 'right', paddingBottom: 'var(--spacing-lg)' }}>Precio Venta</th>
+                    <th style={{ textAlign: 'right', paddingBottom: 'var(--spacing-lg)' }}>Precio</th>
                     {productosActivos.some(p => p['Descuento por volumen'] > 0) && (
                       <th style={{ textAlign: 'center', paddingBottom: 'var(--spacing-lg)' }}>Desc. Vol.</th>
                     )}
@@ -1314,9 +1413,6 @@ function PantallaListaPrecios() {
                       </td>
                       <td style={{ paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
                         {prod.Descripción}
-                      </td>
-                      <td style={{ textAlign: 'right', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)' }}>
-                        —
                       </td>
                       <td style={{ textAlign: 'right', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--accent-primary)' }}>
                         {moneda}{prod['Precio de venta']?.toFixed(2) || '0.00'}
