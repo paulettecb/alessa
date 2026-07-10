@@ -11,3 +11,7 @@ build/
 *.swp
 *.swo
 ~*
+
+# Notion config (contains tokens)
+notion-config.json
+.notion

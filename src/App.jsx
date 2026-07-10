@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
+import { useFlores, useIngredientes, useTamaños, useProductos, useCompras } from './lib/useNotion';
 import './App.css';
 
 function App() {
@@ -68,6 +69,13 @@ function App() {
 }
 
 function PantallaInicio() {
+  const { productos } = useProductos();
+  const { flores } = useFlores();
+  const { ingredientes } = useIngredientes();
+
+  const productosActivos = productos.filter(p => p.Activo).length;
+  const floresActivas = flores.filter(f => f.Activa).length;
+
   return (
     <div className="screen">
       <div className="screen__header">
@@ -77,22 +85,22 @@ function PantallaInicio() {
 
       <div className="grid grid-cols-2 gap-lg">
         <Card className="stat-card">
-          <div className="stat-value">0</div>
+          <div className="stat-value">{productosActivos}</div>
           <div className="stat-label">Productos Activos</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-value">0</div>
+          <div className="stat-value">{floresActivas}</div>
           <div className="stat-label">Flores en Catálogo</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-value">0</div>
+          <div className="stat-value">{ingredientes.length}</div>
           <div className="stat-label">Ingredientes</div>
         </Card>
 
         <Card className="stat-card">
-          <div className="stat-value">$0.00</div>
+          <div className="stat-value">-</div>
           <div className="stat-label">Margen Promedio</div>
         </Card>
       </div>
@@ -100,7 +108,7 @@ function PantallaInicio() {
       <Card className="mt-xl">
         <h3>Próximas Acciones</h3>
         <p className="text-secondary mt-md">
-          Comienza agregando flores, ingredientes y productos. Los datos se sincronizan automáticamente con Notion.
+          ✅ Conexión con Notion activa. Los datos se sincronizan automáticamente.
         </p>
       </Card>
     </div>
@@ -108,57 +116,223 @@ function PantallaInicio() {
 }
 
 function PantallaFlores() {
+  const { flores, loading } = useFlores();
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Flores</h2>
+          <Button>+ Agregar Flor</Button>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando flores...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Flores</h2>
+        <h2>Flores ({flores.length})</h2>
         <Button>+ Agregar Flor</Button>
       </div>
-      <Card>
-        <p className="text-tertiary">No hay flores aún. Crea una nueva flor para comenzar.</p>
-      </Card>
+      {flores.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay flores aún. Crea una nueva flor para comenzar.</p>
+        </Card>
+      ) : (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flores.map(flor => (
+                <tr key={flor.id}>
+                  <td>{flor.Nombre}</td>
+                  <td>{flor.Descripción}</td>
+                  <td>{flor.Activa ? '✓ Activa' : '✗ Inactiva'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 function PantallaIngredientes() {
+  const { ingredientes, loading } = useIngredientes();
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Ingredientes</h2>
+          <Button>+ Agregar Ingrediente</Button>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando ingredientes...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Ingredientes</h2>
+        <h2>Ingredientes ({ingredientes.length})</h2>
         <Button>+ Agregar Ingrediente</Button>
       </div>
-      <Card>
-        <p className="text-tertiary">No hay ingredientes aún. Crea uno nuevo para comenzar.</p>
-      </Card>
+      {ingredientes.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay ingredientes aún. Crea uno nuevo para comenzar.</p>
+        </Card>
+      ) : (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Descripción</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ingredientes.map(ing => (
+                <tr key={ing.id}>
+                  <td>{ing.Nombre}</td>
+                  <td>{ing.Tipo}</td>
+                  <td>{ing.Descripción}</td>
+                  <td>{ing.Activo ? '✓ Activo' : '✗ Inactivo'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 function PantallaProductos() {
+  const { productos, loading } = useProductos();
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Productos</h2>
+          <Button>+ Agregar Producto</Button>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando productos...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Productos</h2>
+        <h2>Productos ({productos.length})</h2>
         <Button>+ Agregar Producto</Button>
       </div>
-      <Card>
-        <p className="text-tertiary">No hay productos aún. Crea uno nuevo para comenzar.</p>
-      </Card>
+      {productos.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay productos aún. Crea uno nuevo para comenzar.</p>
+        </Card>
+      ) : (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>SKU</th>
+                <th>Precio de Venta</th>
+                <th>Costo Total</th>
+                <th>Margen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productos.map(prod => (
+                <tr key={prod.id}>
+                  <td>{prod.Nombre}</td>
+                  <td>{prod.SKU}</td>
+                  <td>${prod['Precio de venta']?.toFixed(2) || '0.00'}</td>
+                  <td>${prod['Costo total']?.toFixed(2) || '0.00'}</td>
+                  <td>{prod['Margen real']?.toFixed(1) || '0'}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 function PantallaCompras() {
+  const { compras, loading } = useCompras();
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Compras</h2>
+          <Button>+ Registrar Compra</Button>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando compras...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Compras</h2>
+        <h2>Compras ({compras.length})</h2>
         <Button>+ Registrar Compra</Button>
       </div>
-      <Card>
-        <p className="text-tertiary">No hay compras registradas aún.</p>
-      </Card>
+      {compras.length === 0 ? (
+        <Card>
+          <p className="text-tertiary">No hay compras registradas aún.</p>
+        </Card>
+      ) : (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Descripción</th>
+                <th>Cantidad</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {compras.map(compra => (
+                <tr key={compra.id}>
+                  <td>{compra.Fecha}</td>
+                  <td>{compra.Proveedor}</td>
+                  <td>{compra.Descripción}</td>
+                  <td>{compra.Cantidad}</td>
+                  <td>${compra.Total?.toFixed(2) || '0.00'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
