@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Flower, Package, Leaf, Flame, ShoppingCart, BarChart3, Settings, Menu, X, Trash2, Edit2 } from 'lucide-react';
 import { Button } from './components/Button';
 import { Card } from './components/Card';
 import { Dialog } from './components/Dialog';
 import { FormField } from './components/FormField';
 import { Greeting } from './components/Greeting';
-import { useFlores, useIngredientes, useTamaños, useProductos, useCompras } from './lib/useNotion';
+import { useFlores, useIngredientes, useTamaños, useProductos, useCompras, useAjustes } from './lib/useNotion';
 import { createPage, updatePage, DATABASES } from './lib/notionClient';
 import './App.css';
 
@@ -1251,14 +1251,179 @@ function RecetaFormulario({ producto, flores, ingredientes, onClose }) {
 }
 
 function PantallaAjustes() {
+  const { ajustes, loading } = useAjustes();
+  const [formData, setFormData] = useState({
+    'Merma %': 30,
+    'Moneda': '$',
+    'Margen estándar %': 50,
+    'Nombre del negocio': 'Alessa - Velas que Florecen',
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Cargar ajustes cuando cambien
+  useEffect(() => {
+    if (Object.keys(ajustes).length > 0) {
+      setFormData({
+        'Merma %': parseFloat(ajustes['Merma %']) || 30,
+        'Moneda': ajustes['Moneda'] || '$',
+        'Margen estándar %': parseFloat(ajustes['Margen estándar %']) || 50,
+        'Nombre del negocio': ajustes['Nombre del negocio'] || 'Alessa - Velas que Florecen',
+      });
+    }
+  }, [ajustes]);
+
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      // Obtener los IDs existentes de Notion para actualizar
+      const response = await fetch(`https://api.notion.com/v1/databases/${DATABASES.AJUSTES}/query`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_NOTION_TOKEN}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ page_size: 100 }),
+      }).then(r => r.json());
+
+      const existingAjustes = response.results || [];
+
+      // Actualizar cada ajuste
+      for (const [key, value] of Object.entries(formData)) {
+        const existing = existingAjustes.find(a => a.properties?.['Parámetro']?.title?.[0]?.plain_text === key);
+
+        if (existing) {
+          // Actualizar
+          await updatePage(existing.id, {
+            Valor: { rich_text: [{ text: { content: String(value) } }] },
+          });
+        } else {
+          // Crear nuevo
+          await createPage(DATABASES.AJUSTES, {
+            Parámetro: { title: [{ text: { content: key } }] },
+            Valor: { rich_text: [{ text: { content: String(value) } }] },
+          });
+        }
+      }
+
+      alert('Ajustes guardados exitosamente!');
+      setIsEditing(false);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error guardando ajustes:', error);
+      alert('Error al guardar. Ver consola para detalles.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formData]);
+
+  if (loading) {
+    return (
+      <div className="screen">
+        <div className="screen__header">
+          <h2>Ajustes</h2>
+        </div>
+        <Card>
+          <p className="text-tertiary">Cargando ajustes...</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
         <h2>Ajustes</h2>
+        <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? 'secondary' : 'primary'}>
+          {isEditing ? '✕ Cancelar' : 'Editar'}
+        </Button>
       </div>
-      <Card>
-        <h3>Configuración General</h3>
-        <p className="text-secondary mt-md">Aquí irá la configuración de merma, márgenes, y más.</p>
+
+      {!isEditing ? (
+        <div className="grid grid-cols-2 gap-lg">
+          <Card>
+            <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Merma estándar</p>
+            <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 'var(--spacing-md)' }}>
+              {formData['Merma %']}%
+            </div>
+          </Card>
+
+          <Card>
+            <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Moneda</p>
+            <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 'var(--spacing-md)' }}>
+              {formData['Moneda']}
+            </div>
+          </Card>
+
+          <Card>
+            <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Margen estándar</p>
+            <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--accent-primary)', marginTop: 'var(--spacing-md)' }}>
+              {formData['Margen estándar %']}%
+            </div>
+          </Card>
+
+          <Card>
+            <p className="text-secondary" style={{ marginBottom: 'var(--spacing-sm)', margin: 0 }}>Nombre del negocio</p>
+            <p style={{ margin: 'var(--spacing-md) 0 0 0', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', lineHeight: 1.4 }}>
+              {formData['Nombre del negocio']}
+            </p>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <h3>Configuración General</h3>
+          <FormField
+            label="Nombre del Negocio"
+            value={formData['Nombre del negocio']}
+            onChange={val => setFormData({ ...formData, 'Nombre del negocio': val })}
+            placeholder="ej: Alessa - Velas que Florecen"
+          />
+          <FormField
+            label="Merma Estándar (%)"
+            type="number"
+            value={formData['Merma %']}
+            onChange={val => setFormData({ ...formData, 'Merma %': parseFloat(val) || 0 })}
+            placeholder="ej: 30"
+          />
+          <FormField
+            label="Moneda"
+            value={formData['Moneda']}
+            onChange={val => setFormData({ ...formData, 'Moneda': val })}
+            placeholder="ej: $ ARS €"
+          />
+          <FormField
+            label="Margen Estándar (%)"
+            type="number"
+            value={formData['Margen estándar %']}
+            onChange={val => setFormData({ ...formData, 'Margen estándar %': parseFloat(val) || 0 })}
+            placeholder="ej: 50"
+          />
+
+          <div className="dialog-actions">
+            <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <Card className="mt-xl">
+        <h3>Información de Ayuda</h3>
+        <div style={{ marginTop: 'var(--spacing-md)', fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+          <p style={{ marginBottom: 'var(--spacing-md)' }}>
+            <strong>Merma:</strong> Porcentaje de pérdida en la fabricación de velas. Se aplica automáticamente en las recetas.
+          </p>
+          <p style={{ marginBottom: 'var(--spacing-md)' }}>
+            <strong>Margen estándar:</strong> Porcentaje de ganancia que aplica por defecto a los productos.
+          </p>
+          <p>
+            <strong>Moneda:</strong> Símbolo usado para mostrar precios en la aplicación.
+          </p>
+        </div>
       </Card>
     </div>
   );
