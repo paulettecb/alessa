@@ -455,6 +455,92 @@ function PantallaIngredientes() {
 
 function PantallaProductos() {
   const { productos, loading } = useProductos();
+  const { tamaños } = useTamaños();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProd, setEditingProd] = useState(null);
+  const [formData, setFormData] = useState({
+    Nombre: '',
+    SKU: '',
+    Descripción: '',
+    Tamaño: '',
+    'Precio de venta': 0,
+    'Descuento por volumen': 0,
+    Activo: true,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      Nombre: '',
+      SKU: '',
+      Descripción: '',
+      Tamaño: '',
+      'Precio de venta': 0,
+      'Descuento por volumen': 0,
+      Activo: true,
+    });
+    setEditingProd(null);
+  }, []);
+
+  const handleOpenDialog = useCallback((prod = null) => {
+    if (prod) {
+      setEditingProd(prod);
+      setFormData({
+        Nombre: prod.Nombre || '',
+        SKU: prod.SKU || '',
+        Descripción: prod.Descripción || '',
+        Tamaño: prod.Tamaño || '',
+        'Precio de venta': prod['Precio de venta'] || 0,
+        'Descuento por volumen': prod['Descuento por volumen'] || 0,
+        Activo: prod.Activo !== false,
+      });
+    } else {
+      resetForm();
+    }
+    setIsDialogOpen(true);
+  }, [resetForm]);
+
+  const handleCloseDialog = useCallback(() => {
+    setIsDialogOpen(false);
+    setTimeout(resetForm, 300);
+  }, [resetForm]);
+
+  const handleSave = useCallback(async () => {
+    if (!formData.Nombre.trim()) {
+      alert('El nombre es requerido');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (editingProd) {
+        await updatePage(editingProd.id, {
+          Nombre: { title: [{ text: { content: formData.Nombre } }] },
+          SKU: { rich_text: [{ text: { content: formData.SKU } }] },
+          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+          'Precio de venta': { number: parseFloat(formData['Precio de venta']) || 0 },
+          'Descuento por volumen': { number: parseFloat(formData['Descuento por volumen']) || 0 },
+          Activo: { checkbox: formData.Activo },
+        });
+      } else {
+        await createPage(DATABASES.PRODUCTOS, {
+          Nombre: { title: [{ text: { content: formData.Nombre } }] },
+          SKU: { rich_text: [{ text: { content: formData.SKU } }] },
+          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+          'Precio de venta': { number: parseFloat(formData['Precio de venta']) || 0 },
+          'Descuento por volumen': { number: parseFloat(formData['Descuento por volumen']) || 0 },
+          Activo: { checkbox: formData.Activo },
+        });
+      }
+      handleCloseDialog();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error guardando producto:', error);
+      alert('Error al guardar. Ver consola para detalles.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formData, editingProd, handleCloseDialog]);
 
   if (loading) {
     return (
@@ -474,7 +560,7 @@ function PantallaProductos() {
     <div className="screen">
       <div className="screen__header">
         <h2>Productos ({productos.length})</h2>
-        <Button>+ Agregar Producto</Button>
+        <Button onClick={() => handleOpenDialog()}>+ Agregar Producto</Button>
       </div>
       {productos.length === 0 ? (
         <Card>
@@ -488,8 +574,9 @@ function PantallaProductos() {
                 <th>Nombre</th>
                 <th>SKU</th>
                 <th>Precio de Venta</th>
-                <th>Costo Total</th>
-                <th>Margen</th>
+                <th>Descuento Vol.</th>
+                <th>Estado</th>
+                <th style={{ width: '100px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -498,20 +585,187 @@ function PantallaProductos() {
                   <td>{prod.Nombre}</td>
                   <td>{prod.SKU}</td>
                   <td>${prod['Precio de venta']?.toFixed(2) || '0.00'}</td>
-                  <td>${prod['Costo total']?.toFixed(2) || '0.00'}</td>
-                  <td>{prod['Margen real']?.toFixed(1) || '0'}%</td>
+                  <td>{prod['Descuento por volumen']?.toFixed(0) || '0'}%</td>
+                  <td>{prod.Activo ? '✓ Activo' : '✗ Inactivo'}</td>
+                  <td>
+                    <div className="table-actions">
+                      <button
+                        className="table-action-btn"
+                        onClick={() => handleOpenDialog(prod)}
+                        title="Editar"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <Dialog isOpen={isDialogOpen} onClose={handleCloseDialog} title={editingProd ? 'Editar Producto' : 'Nuevo Producto'}>
+        <FormField
+          label="Nombre"
+          value={formData.Nombre}
+          onChange={val => setFormData({ ...formData, Nombre: val })}
+          placeholder="ej: Ramo Rosa Mediano..."
+          required
+        />
+        <FormField
+          label="SKU"
+          value={formData.SKU}
+          onChange={val => setFormData({ ...formData, SKU: val })}
+          placeholder="ej: RAMO_ROSA_MED_001"
+        />
+        <FormField
+          label="Descripción"
+          type="textarea"
+          value={formData.Descripción}
+          onChange={val => setFormData({ ...formData, Descripción: val })}
+          placeholder="Descripción del producto..."
+        />
+        <FormField
+          label="Precio de Venta"
+          type="number"
+          value={formData['Precio de venta']}
+          onChange={val => setFormData({ ...formData, 'Precio de venta': val })}
+          placeholder="0.00"
+          required
+        />
+        <FormField
+          label="Descuento por Volumen (%)"
+          type="number"
+          value={formData['Descuento por volumen']}
+          onChange={val => setFormData({ ...formData, 'Descuento por volumen': val })}
+          placeholder="ej: 10 (para -10%)"
+        />
+        <FormField
+          label="Activo"
+          type="checkbox"
+          value={formData.Activo}
+          onChange={val => setFormData({ ...formData, Activo: val })}
+        />
+
+        <div className="dialog-actions">
+          <Button variant="secondary" onClick={handleCloseDialog}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Guardando...' : editingProd ? 'Actualizar' : 'Crear'}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
 
 function PantallaCompras() {
   const { compras, loading } = useCompras();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingCompra, setEditingCompra] = useState(null);
+  const [formData, setFormData] = useState({
+    Fecha: new Date().toISOString().split('T')[0],
+    Proveedor: '',
+    Tipo: '',
+    Descripción: '',
+    Cantidad: 0,
+    'Precio unitario': 0,
+    Total: 0,
+    Notas: '',
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const tiposCompras = ['Flor', 'Ingrediente'];
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      Fecha: new Date().toISOString().split('T')[0],
+      Proveedor: '',
+      Tipo: '',
+      Descripción: '',
+      Cantidad: 0,
+      'Precio unitario': 0,
+      Total: 0,
+      Notas: '',
+    });
+    setEditingCompra(null);
+  }, []);
+
+  const handleOpenDialog = useCallback((compra = null) => {
+    if (compra) {
+      setEditingCompra(compra);
+      setFormData({
+        Fecha: compra.Fecha || new Date().toISOString().split('T')[0],
+        Proveedor: compra.Proveedor || '',
+        Tipo: compra.Tipo || '',
+        Descripción: compra.Descripción || '',
+        Cantidad: compra.Cantidad || 0,
+        'Precio unitario': compra['Precio unitario'] || 0,
+        Total: compra.Total || 0,
+        Notas: compra.Notas || '',
+      });
+    } else {
+      resetForm();
+    }
+    setIsDialogOpen(true);
+  }, [resetForm]);
+
+  const handleCloseDialog = useCallback(() => {
+    setIsDialogOpen(false);
+    setTimeout(resetForm, 300);
+  }, [resetForm]);
+
+  const calcularTotal = () => {
+    const cantidad = parseFloat(formData.Cantidad) || 0;
+    const precio = parseFloat(formData['Precio unitario']) || 0;
+    return (cantidad * precio).toFixed(2);
+  };
+
+  const handleSave = useCallback(async () => {
+    if (!formData.Fecha || !formData.Proveedor.trim()) {
+      alert('Fecha y proveedor son requeridos');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const total = parseFloat(calcularTotal());
+      if (editingCompra) {
+        await updatePage(editingCompra.id, {
+          Name: { title: [{ text: { content: formData.Fecha } }] },
+          Fecha: { date: { start: formData.Fecha } },
+          Proveedor: { rich_text: [{ text: { content: formData.Proveedor } }] },
+          Tipo: { select: { name: formData.Tipo } },
+          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+          Cantidad: { number: parseFloat(formData.Cantidad) || 0 },
+          'Precio unitario': { number: parseFloat(formData['Precio unitario']) || 0 },
+          Total: { number: total },
+          Notas: { rich_text: [{ text: { content: formData.Notas } }] },
+        });
+      } else {
+        await createPage(DATABASES.COMPRAS, {
+          Name: { title: [{ text: { content: formData.Fecha } }] },
+          Fecha: { date: { start: formData.Fecha } },
+          Proveedor: { rich_text: [{ text: { content: formData.Proveedor } }] },
+          Tipo: { select: { name: formData.Tipo } },
+          Descripción: { rich_text: [{ text: { content: formData.Descripción } }] },
+          Cantidad: { number: parseFloat(formData.Cantidad) || 0 },
+          'Precio unitario': { number: parseFloat(formData['Precio unitario']) || 0 },
+          Total: { number: total },
+          Notas: { rich_text: [{ text: { content: formData.Notas } }] },
+        });
+      }
+      handleCloseDialog();
+      window.location.reload();
+    } catch (error) {
+      console.error('Error guardando compra:', error);
+      alert('Error al guardar. Ver consola para detalles.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formData, editingCompra, handleCloseDialog]);
 
   if (loading) {
     return (
@@ -531,7 +785,7 @@ function PantallaCompras() {
     <div className="screen">
       <div className="screen__header">
         <h2>Compras ({compras.length})</h2>
-        <Button>+ Registrar Compra</Button>
+        <Button onClick={() => handleOpenDialog()}>+ Registrar Compra</Button>
       </div>
       {compras.length === 0 ? (
         <Card>
@@ -544,9 +798,11 @@ function PantallaCompras() {
               <tr>
                 <th>Fecha</th>
                 <th>Proveedor</th>
+                <th>Tipo</th>
                 <th>Descripción</th>
                 <th>Cantidad</th>
                 <th>Total</th>
+                <th style={{ width: '100px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -554,15 +810,99 @@ function PantallaCompras() {
                 <tr key={compra.id}>
                   <td>{compra.Fecha}</td>
                   <td>{compra.Proveedor}</td>
+                  <td>{compra.Tipo}</td>
                   <td>{compra.Descripción}</td>
                   <td>{compra.Cantidad}</td>
                   <td>${compra.Total?.toFixed(2) || '0.00'}</td>
+                  <td>
+                    <div className="table-actions">
+                      <button
+                        className="table-action-btn"
+                        onClick={() => handleOpenDialog(compra)}
+                        title="Editar"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <Dialog isOpen={isDialogOpen} onClose={handleCloseDialog} title={editingCompra ? 'Editar Compra' : 'Nueva Compra'}>
+        <FormField
+          label="Fecha"
+          type="date"
+          value={formData.Fecha}
+          onChange={val => setFormData({ ...formData, Fecha: val })}
+          required
+        />
+        <FormField
+          label="Proveedor"
+          value={formData.Proveedor}
+          onChange={val => setFormData({ ...formData, Proveedor: val })}
+          placeholder="ej: Proveedor mayorista 1..."
+          required
+        />
+        <FormField
+          label="Tipo"
+          type="select"
+          value={formData.Tipo}
+          onChange={val => setFormData({ ...formData, Tipo: val })}
+          options={tiposCompras}
+        />
+        <FormField
+          label="Descripción"
+          type="textarea"
+          value={formData.Descripción}
+          onChange={val => setFormData({ ...formData, Descripción: val })}
+          placeholder="ej: 100 rosas rojas preservadas..."
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
+          <FormField
+            label="Cantidad"
+            type="number"
+            value={formData.Cantidad}
+            onChange={val => setFormData({ ...formData, Cantidad: val })}
+            placeholder="0"
+            required
+          />
+          <FormField
+            label="Precio Unitario"
+            type="number"
+            value={formData['Precio unitario']}
+            onChange={val => setFormData({ ...formData, 'Precio unitario': val })}
+            placeholder="0.00"
+            required
+          />
+        </div>
+        <div style={{ padding: 'var(--spacing-lg)', backgroundColor: 'var(--bg-sunken)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--spacing-lg)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            Total: <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-lg)', color: 'var(--accent-primary)' }}>
+              ${calcularTotal()}
+            </strong>
+          </p>
+        </div>
+        <FormField
+          label="Notas"
+          type="textarea"
+          value={formData.Notas}
+          onChange={val => setFormData({ ...formData, Notas: val })}
+          placeholder="Notas adicionales (lote, descuento, etc.)..."
+        />
+
+        <div className="dialog-actions">
+          <Button variant="secondary" onClick={handleCloseDialog}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Guardando...' : editingCompra ? 'Actualizar' : 'Registrar'}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
